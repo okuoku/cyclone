@@ -123,7 +123,11 @@
 
 (define (lookup-variable-value var env)
   (define (env-loop env)
-    (define (scan vars vals)
+    ;; TODO: something funny going on when printing global env, after '(define a 1)' - what's going on?
+    (if (eq? env *global-environment*)
+        (write (list 'env-loop-glo (cdr env)))
+        (write (list 'env-loop env)))
+    (define (lscan vars vals)
       (cond ((null? vars)
              (env-loop (enclosing-environment env)))
             ((eq? var (car vars))
@@ -132,11 +136,11 @@
                  (Cyc-get-cvar (car vals)))
                (else 
                  (car vals))))
-            (else (scan (cdr vars) (cdr vals)))))
+            (else (lscan (cdr vars) (cdr vals)))))
     (if (eq? env the-empty-environment)
         (error "Unbound variable" var)
         (let ((frame (first-frame env)))
-          (scan (frame-variables frame)
+          (lscan (frame-variables frame)
                 (frame-values frame)))))
   (env-loop env))
 
@@ -171,6 +175,9 @@
              ;; cond-expand
              ;;  if cvar
              ;;     set-cvar
+             ;    (if (Cyc-cvar? (car vals))
+             ;      (Cyc-set-cvar! (car vals) val)
+             ;      (set-car! vals val)))
              (set-car! vals val))
             (else (scan (cdr vars) (cdr vals)))))
     (scan (frame-variables frame)
