@@ -1758,7 +1758,7 @@ static void GC_loop(int major, closure cont, object *ans, int num_ans)
    switch (type_of(scanp))
      {case cons_tag:
 #if DEBUG_GC
- printf("DEBUG transport cons_tag\n");
+ printf("DEBUG transport cons_tag (%p . %p)\n", car(scanp), cdr(scanp));
 #endif
         transp(car(scanp)); transp(cdr(scanp));
         scanp += sizeof(cons_type); break;
