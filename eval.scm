@@ -303,7 +303,7 @@
                              (primitive-procedure-objects)
                              the-empty-environment)))
     (cond-expand
-      (cyclone
+      (cyclone-NODEBUG ;; don't load yet, to simplify debugging
         ;; Also include compiled variables
         (extend-environment
           (map (lambda (v) (car v)) (Cyc-global-vars))
