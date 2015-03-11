@@ -14,7 +14,7 @@
 #define DEBUG_ALWAYS_GC 0
 
 /* Debug GC flag */
-#define DEBUG_GC 0
+#define DEBUG_GC 1
 
 /* Show diagnostic information for the GC when program terminate */
 #define DEBUG_SHOW_DIAG 0
@@ -638,7 +638,7 @@ static object Cyc_display(x) object x;
       printf(")");
       break;
     default:
-      printf("Cyc_display: bad tag x=%ld\n", ((closure)x)->tag); getchar(); exit(0);}
+      printf("Cyc_display: bad tag x=%ld ptr=%p\n", ((closure)x)->tag, x); getchar(); exit(0);}
  return x;}
 
 static object Cyc_write(x) object x;
@@ -1578,7 +1578,7 @@ static char *transport(x, gcgen) char *x; int gcgen;
  if (obj_is_char(x)) return x;
 #if DEBUG_GC
  printf("entered transport ");
- printf("transport %ld\n", type_of(x));
+ printf("transport %ld at %p\n", type_of(x), x);
 #endif
  switch (type_of(x))
    {case cons_tag:
