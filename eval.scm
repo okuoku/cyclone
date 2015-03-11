@@ -122,11 +122,13 @@
           (error "Too few arguments supplied" vars vals))))
 
 (define (lookup-variable-value var env)
+  (write (list 'entered 'lookup))
   (define (env-loop env)
+    (write (list 'env-loop env))
     ;; TODO: something funny going on when printing global env, after '(define a 1)' - what's going on?
-    (if (eq? env *global-environment*)
-        (write (list 'env-loop-glo (cdr env)))
-        (write (list 'env-loop env)))
+    ;(if (eq? env *global-environment*)
+    ;    (write (list 'env-loop-glo (cdr env)))
+    ;    (write (list 'env-loop env)))
     (define (lscan vars vals)
       (cond ((null? vars)
              (env-loop (enclosing-environment env)))
