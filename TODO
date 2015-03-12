@@ -6,6 +6,13 @@ looks like problem accessing compound procedure in environment?
 (cadar env) ==> procedure
 (gdb) p ((list)((list)((list)((list)env_73134 )->cons_car)->cons_cdr)->cons_car)->cons_car
 
+weird how this resolves to 'procedure' but then right before crashing it resolves to 'a'. what's going on???
+
+(define (a x) x)
+a
+(a 1)
+(a 1)
+...
 
 
  - Intepreter needs work:
