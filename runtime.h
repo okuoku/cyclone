@@ -429,10 +429,24 @@ static object find_or_add_symbol(const char *name){
 /* Write Barrier
    This is necessary when a mutation (EG: set-car!) occurs, because otherwise
    if the new value is on the stack, it will never be transported to the heap.
+       
+TODO:
+picture (set-car! *glo* 1)
+we need to transport that 1 during the next GC. 
+what if *glo* is on the stack? are we OK, or will 1 get transp twice??
+I think the forwarding pointers take care of that, so the first transp
+moves 1 to the heap, and the second just returns the heap address
+
+but maybe there's an issue here, because the previous test case fails with a bad tag, and x=2 is a forwarding pointer!:
+
+[DEBUG: 0xbfe165a0](entered lookup)
+[DEBUG: 0xbfe16150](env-loop ((Cyc_display: bad tag x=2 ptr=0xbfe1ca4c
+
+       */
 list write_barrier = nil;
 
 static void add_to_write_barrier(object obj);
-static void transport_write_barrier();
+//static void transport_write_barrier();
 static void clear_write_barrier();
 
 static void add_to_write_barrier(object obj) {
@@ -445,7 +459,7 @@ static void add_to_write_barrier(object obj) {
 #define transp_write_barrier() { \
   list l = write_barrier; \
   for (; !nullp(l); l = cdr(l)) { \
-    printf("transp from WB: %ld", type_of(car(l))); \
+    printf("transp from WB: %ld %p", type_of(car(l)), car(l)); \
     transp(car(l)); \
   } \
 }
@@ -459,7 +473,7 @@ static void clear_write_barrier() {
   }
   write_barrier = nil;
 }
-* END write barrier */
+/* END write barrier */
 
 /* Global variables. */
 
@@ -795,11 +809,19 @@ static object Cyc_eq(object x, object y) {
 }
 
 static object Cyc_set_car(object l, object val) {
+    printf("set-car! add to WB [%p]: ", val);
+    Cyc_display(val);
+    printf("\n");
+    add_to_write_barrier(val);
     ((list)l)->cons_car = val;
     return l;
 }
 
 static object Cyc_set_cdr(object l, object val) {
+    printf("set-cdr! add to WB [%p]: ", val);
+    Cyc_display(val);
+    printf("\n");
+    add_to_write_barrier(val);
     ((list)l)->cons_cdr = val;
     return l;
 }
@@ -1750,8 +1772,8 @@ static void GC_loop(int major, closure cont, object *ans, int num_ans)
 #endif
 
  /* Transport global variables. */
-// transp_write_barrier();
-// clear_write_barrier(); /* Reset for next time */
+transp_write_barrier();
+clear_write_barrier(); /* Reset for next time */
  transp(Cyc_global_variables); /* Internal global used by the runtime */
  GC_GLOBALS
  while (scanp<allocp)       /* Scan the newspace. */
