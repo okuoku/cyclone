@@ -445,22 +445,22 @@ but maybe there's an issue here, because the previous test case fails with a bad
        */
 list write_barrier = nil;
 
-static void add_to_write_barrier(object obj);
+static void add_to_write_barrier(object var, object value);
 //static void transport_write_barrier();
 static void clear_write_barrier();
 
-static void add_to_write_barrier(object obj) {
-  // TODO: only needed if obj is on the stack?
-  if (is_object_type(obj)) {
-    write_barrier = mcons(obj, write_barrier);
+static void add_to_write_barrier(object var, object value) {
+  if (is_object_type(value)) {
+    write_barrier = mcons(mcons(var, value), write_barrier);
   }
 }
 
 #define transp_write_barrier() { \
   list l = write_barrier; \
   for (; !nullp(l); l = cdr(l)) { \
-    printf("transp from WB: %ld %p", type_of(car(l)), car(l)); \
-    transp(car(l)); \
+    printf("transp from WB: %ld %p", type_of(cdar(l)), cdar(l)); \
+    transp(cdar(l)); \
+    caar(l) = cdar(l); \
   } \
 }
 
@@ -468,7 +468,8 @@ static void clear_write_barrier() {
   list l = write_barrier, next;
   while (!nullp(l)) {
     next = cdr(l);
-    free(l);
+    free(car(l)); // The actual var/value pair
+    free(l); // A node in the chain
     l = next;
   }
   write_barrier = nil;
@@ -812,7 +813,7 @@ static object Cyc_set_car(object l, object val) {
     printf("set-car! add to WB [%p]: ", val);
     Cyc_display(val);
     printf("\n");
-    add_to_write_barrier(val);
+    add_to_write_barrier(((list)l)->cons_car, val);
     ((list)l)->cons_car = val;
     return l;
 }
@@ -821,7 +822,7 @@ static object Cyc_set_cdr(object l, object val) {
     printf("set-cdr! add to WB [%p]: ", val);
     Cyc_display(val);
     printf("\n");
-    add_to_write_barrier(val);
+    add_to_write_barrier(((list)l)->cons_cdr, val);
     ((list)l)->cons_cdr = val;
     return l;
 }
