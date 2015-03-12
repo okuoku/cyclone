@@ -451,24 +451,16 @@ static void clear_write_barrier();
 
 static void add_to_write_barrier(object var, object value) {
   if (is_object_type(value)) {
-    write_barrier = mcons(mcons(var, value), write_barrier);
+    printf("JAE DEBUG add_to_write_barrier %p (%ld) %p \n", var, type_of(var), value);
+    write_barrier = mcons(var, write_barrier);
   }
-}
-
-#define transp_write_barrier() { \
-  list l = write_barrier; \
-  for (; !nullp(l); l = cdr(l)) { \
-    printf("transp from WB: %ld %p", type_of(cdar(l)), cdar(l)); \
-    transp(cdar(l)); \
-    caar(l) = cdar(l); \
-  } \
+  // TODO: could do the mutation here, instead of in caller
 }
 
 static void clear_write_barrier() {
   list l = write_barrier, next;
   while (!nullp(l)) {
     next = cdr(l);
-    free(car(l)); // The actual var/value pair
     free(l); // A node in the chain
     l = next;
   }
@@ -813,8 +805,9 @@ static object Cyc_set_car(object l, object val) {
     printf("set-car! add to WB [%p]: ", val);
     Cyc_display(val);
     printf("\n");
-    add_to_write_barrier(((list)l)->cons_car, val);
-    ((list)l)->cons_car = val;
+    car(l) = val;
+    Cyc_write(l);
+    add_to_write_barrier(car(l), val);
     return l;
 }
 
@@ -822,8 +815,10 @@ static object Cyc_set_cdr(object l, object val) {
     printf("set-cdr! add to WB [%p]: ", val);
     Cyc_display(val);
     printf("\n");
-    add_to_write_barrier(((list)l)->cons_cdr, val);
-    ((list)l)->cons_cdr = val;
+//    add_to_write_barrier( &(((list)l)->cons_cdr), val);
+    cdr(l) = val;
+    Cyc_write(l);
+    add_to_write_barrier(cdr(l), val);
     return l;
 }
 
@@ -1773,7 +1768,24 @@ static void GC_loop(int major, closure cont, object *ans, int num_ans)
 #endif
 
  /* Transport global variables. */
-transp_write_barrier();
+//transp_write_barrier();
+{
+  list l = write_barrier;
+  for (; !nullp(l); l = cdr(l)) {
+    printf("transp from WB: %ld %p  ", type_of(car(l)), car(l));
+    Cyc_write(car(l));
+    printf("\n");
+    transp(car(l));
+    //temp = car(l);
+    //car(l) = (object)transport(temp, major);
+    if (type_of(car(l)) == cons_tag) {
+      printf("after transport: ");
+      Cyc_write(car(l));
+      printf(" [%p] \n", caar(l));
+    }
+  }
+}
+
 clear_write_barrier(); /* Reset for next time */
  transp(Cyc_global_variables); /* Internal global used by the runtime */
  GC_GLOBALS
