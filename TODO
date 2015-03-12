@@ -1,5 +1,13 @@
 Working TODO list:
 
+Notes about below:
+
+looks like problem accessing compound procedure in environment?
+(cadar env) ==> procedure
+(gdb) p ((list)((list)((list)((list)env_73134 )->cons_car)->cons_cdr)->cons_car)->cons_car
+
+
+
  - Intepreter needs work:
 
 cyclone> (define a (lambda (x) x))
