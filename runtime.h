@@ -1780,24 +1780,41 @@ static void GC_loop(int major, closure cont, object *ans, int num_ans)
 {
   list l = write_barrier;
   for (; !nullp(l); l = cdr(l)) {
-    printf("transp from WB: %ld %p  ", type_of(car(l)), car(l));
-    Cyc_write(car(l));
-    printf("\n");
-    //transp(car(l));
-    temp = car(l);
-    car(l) = (object)transport(temp, major);
-//    if (type_of(car(l)) == forward_tag) {
-//        // a hack to test the concept. if this works, the code
-//        // would need to do this if car(l) would not otherwise
-//        // be relocated.
-//        // this all seems like an unnecessary hack, though.
-//        car(l) = forward(car(l));
-//    }
-    if (type_of(car(l)) == cons_tag) {
-      printf("after transport: ");
-      Cyc_write(car(l));
-      printf(" [%p] \n", caar(l));
+    object o = car(l);
+    printf("transp from WB: %ld %p  \n", type_of(car(l)), car(l));
+    if (type_of(o) == cons_tag) {
+        object old_car = car(o),
+               old_cdr = cdr(o);
+        transp(car(o));
+        transp(cdr(o));
+
+        // TODO: do we have to worry about fwd ptrs??
+        // if (car(o) != old_car) {}
+        o = nil; // For debugger only, will remove this
+    } else if (type_of(o) == forward_tag) {
+        // OK to skip?
+        printf("WB: Skipping fwd tag\n");
+    } else {
+        printf("Unexpected type %ld transporting from WB\n", type_of(o));
+        exit(1);
     }
+//    Cyc_write(car(l));
+//    printf("\n");
+//    //transp(car(l));
+//    temp = car(l);
+//    car(l) = (object)transport(temp, major);
+////    if (type_of(car(l)) == forward_tag) {
+////        // a hack to test the concept. if this works, the code
+////        // would need to do this if car(l) would not otherwise
+////        // be relocated.
+////        // this all seems like an unnecessary hack, though.
+////        car(l) = forward(car(l));
+////    }
+//    if (type_of(car(l)) == cons_tag) {
+//      printf("after transport: ");
+//      Cyc_write(car(l));
+//      printf(" [%p] \n", caar(l));
+//    }
   }
 }
 
