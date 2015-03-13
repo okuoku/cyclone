@@ -587,6 +587,9 @@ static object Cyc_display(x) object x;
     case closureN_tag:
       printf("<procedure %p>",(void *)((closure) x)->fn);
       break;
+    case forward_tag:
+      printf("<fwd>");
+      break;
     case eof_tag:
       printf("<EOF>");
       break;
@@ -802,12 +805,17 @@ static object Cyc_eq(object x, object y) {
 }
 
 static object Cyc_set_car(object l, object val) {
-    printf("set-car! add to WB [%p]: ", val);
+    printf("set-car! of [%p]", l);
+    Cyc_display(l);
+    printf(" to ");
     Cyc_display(val);
+    printf(" add to WB [%p]: ", l);
     printf("\n");
     car(l) = val;
     Cyc_write(l);
-    add_to_write_barrier(car(l), val);
+    // adding car(l) causes the code to use the old instance after GC.
+    // do we need to transport l so it points to the new car? seems less than ideal
+    add_to_write_barrier(l, val); //car(l), val); // need to transport l so it points to new car???
     return l;
 }
 
@@ -818,7 +826,7 @@ static object Cyc_set_cdr(object l, object val) {
 //    add_to_write_barrier( &(((list)l)->cons_cdr), val);
     cdr(l) = val;
     Cyc_write(l);
-    add_to_write_barrier(cdr(l), val);
+    add_to_write_barrier(l, val); //cdr(l), val);
     return l;
 }
 
@@ -1775,9 +1783,16 @@ static void GC_loop(int major, closure cont, object *ans, int num_ans)
     printf("transp from WB: %ld %p  ", type_of(car(l)), car(l));
     Cyc_write(car(l));
     printf("\n");
-    transp(car(l));
-    //temp = car(l);
-    //car(l) = (object)transport(temp, major);
+    //transp(car(l));
+    temp = car(l);
+    car(l) = (object)transport(temp, major);
+//    if (type_of(car(l)) == forward_tag) {
+//        // a hack to test the concept. if this works, the code
+//        // would need to do this if car(l) would not otherwise
+//        // be relocated.
+//        // this all seems like an unnecessary hack, though.
+//        car(l) = forward(car(l));
+//    }
     if (type_of(car(l)) == cons_tag) {
       printf("after transport: ");
       Cyc_write(car(l));
