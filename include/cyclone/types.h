@@ -442,8 +442,8 @@ typedef pair_type *pair;
 
 #define make_cell(n,a) make_pair(n,a,NULL);
 
-#define car(x)    (((pair_type *) x)->pair_car)
-#define cdr(x)    (((pair_type *) x)->pair_cdr)
+#define car_direct(x)    (((pair_type *) x)->pair_car)
+#define cdr_direct(x)    (((pair_type *) x)->pair_cdr)
 #define caar(x)   (car(car(x)))
 #define cadr(x)   (car(cdr(x)))
 #define cdar(x)   (cdr(car(x)))

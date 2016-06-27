@@ -158,6 +158,8 @@ object Cyc_num_cmp_va_list(void *data, int argc,
                            int (fn_op(void *, object, object)), object n,
                            va_list ns);
 object Cyc_eq(object x, object y);
+object car(object lis);
+object cdr(object lis);
 object Cyc_set_car(void *, object l, object val);
 object Cyc_set_cdr(void *, object l, object val);
 object Cyc_length(void *d, object l);

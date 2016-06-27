@@ -256,8 +256,8 @@ char *gc_copy_obj(object dest, char *obj, gc_thread_data * thd)
       list hp = dest;
       hp->hdr.mark = thd->gc_alloc_color;
       type_of(hp) = pair_tag;
-      car(hp) = car(obj);
-      cdr(hp) = cdr(obj);
+      car_direct(hp) = car_direct(obj);
+      cdr_direct(hp) = cdr_direct(obj);
       return (char *)hp;
     }
   case macro_tag:{
@@ -1075,8 +1075,8 @@ void gc_mark_black(object obj)
     // for cons and vector types, as these pointers could change.
     switch (type_of(obj)) {
     case pair_tag:{
-        gc_collector_mark_gray(obj, car(obj));
-        gc_collector_mark_gray(obj, cdr(obj));
+        gc_collector_mark_gray(obj, car_direct(obj));
+        gc_collector_mark_gray(obj, cdr_direct(obj));
         break;
       }
     case closure1_tag:

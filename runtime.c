@@ -1139,12 +1139,38 @@ object Cyc_eq(object x, object y)
   return boolean_f;
 }
 
+object car(object lis)
+{
+  if (Cyc_is_pair(lis) == boolean_f) {
+    // This isn't really good enough, want to raise an exception instead but
+    // we need the data parameter for that, which is a larger change.
+    fprintf(stderr, "car: invalid type expected pair\n");
+    Cyc_display(lis, stderr);
+    fprintf(stderr, "\n");
+    exit(1);
+  }
+  return (((pair_type *) lis)->pair_car);
+}
+
+object cdr(object lis)
+{
+  if (Cyc_is_pair(lis) == boolean_f) {
+    // This isn't really good enough, want to raise an exception instead but
+    // we need the data parameter for that, which is a larger change.
+    fprintf(stderr, "car: invalid type expected pair\n");
+    Cyc_display(lis, stderr);
+    fprintf(stderr, "\n");
+    exit(1);
+  }
+  return (((pair_type *) lis)->pair_cdr);
+}
+
 object Cyc_set_car(void *data, object l, object val)
 {
   if (Cyc_is_pair(l) == boolean_f)
     Cyc_invalid_type_error(data, pair_tag, l);
   gc_mut_update((gc_thread_data *) data, car(l), val);
-  car(l) = val;
+  car_direct(l) = val;
   add_mutation(data, l, -1, val);
   return l;
 }
@@ -1154,7 +1180,7 @@ object Cyc_set_cdr(void *data, object l, object val)
   if (Cyc_is_pair(l) == boolean_f)
     Cyc_invalid_type_error(data, pair_tag, l);
   gc_mut_update((gc_thread_data *) data, cdr(l), val);
-  cdr(l) = val;
+  cdr_direct(l) = val;
   add_mutation(data, l, -1, val);
   return l;
 }
@@ -3587,8 +3613,8 @@ int gc_minor(void *data, object low_limit, object high_limit, closure cont,
         // Can happen if a vector element was already
         // moved and we found an index. Just ignore it
       } else if (type_of(o) == pair_tag) {
-        gc_move2heap(car(o));
-        gc_move2heap(cdr(o));
+        gc_move2heap(car_direct(o));
+        gc_move2heap(cdr_direct(o));
       } else if (type_of(o) == vector_tag) {
         int i;
         object idx;
@@ -3622,8 +3648,8 @@ int gc_minor(void *data, object low_limit, object high_limit, closure cont,
     object obj = ((gc_thread_data *) data)->moveBuf[scani];
     switch (type_of(obj)) {
     case pair_tag:{
-        gc_move2heap(car(obj));
-        gc_move2heap(cdr(obj));
+        gc_move2heap(car_direct(obj));
+        gc_move2heap(cdr_direct(obj));
         break;
       }
     case closure1_tag:
