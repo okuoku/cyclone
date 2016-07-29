@@ -8,6 +8,7 @@
 ;;;;
 (import (scheme base)
         (scheme case-lambda)
+        (scheme cxr)
         (scheme eval)
         (scheme file)
         (scheme lazy)
