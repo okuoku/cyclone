@@ -582,7 +582,7 @@
     (define (inline-prim-call? exp ivars args)
       (call/cc
         (lambda (return)
-          (inline-ok? exp ivars args (list #f) return #f)
+          (inline-ok? exp ivars args (list #f) return #f (make-hash-table))
           (return #t))))
 
     ;; Make sure inlining a primitive call will not cause out-of-order execution
@@ -593,9 +593,10 @@
     ;;            it cannot be optimized-out and we have to bail.
     ;;            This is a cons "box" so it can be mutated.
     ;; return - call into this continuation to return early
-    ;; mut-pos - expression is in a mutator's variable position, EG:
+    ;; mutated - expression is in a mutator's variable position, EG:
     ;;           the "v" part of (set-car! v #f)
-    (define (inline-ok? exp ivars args arg-used return mut-pos)
+    ;; ref-checked-tbl - hashtable of refs that have already been checked
+    (define (inline-ok? exp ivars args arg-used return mutated ref-checked-tbl)
       ;(trace:error `(inline-ok? ,exp ,ivars ,args ,arg-used))
       (cond
         ((ref? exp)
@@ -606,52 +607,61 @@
            (return #f))
           (else 
            (let ((db-var (adb:get/default exp #f)))
-            (if #f ;;TODO: db-var
-                ;; If there is an assigned value, check it, too
-                (inline-ok? (adbv:assigned-value db-var) ivars args arg-used return mut-pos)
-                #t)))))
+            (cond
+             ;; If the ref has been assigned a value, inspect that value, too
+             ((and db-var
+                   (adbv:assigned-value db-var) ;; Wait until it has a value
+                   (not (hash-table-exists? ref-checked-tbl exp))
+              )
+(trace:error `(inline-ok ,exp ,(adbv:assigned-value db-var) ,ivars ,args ,arg-used ,mutated))
+              (hash-table-set! ref-checked-tbl exp #t) ;; only need to check each ref once
+              (inline-ok? (adbv:assigned-value db-var) ivars args arg-used return mutated ref-checked-tbl))
+             (else
+              #t))))))
         ((ast:lambda? exp)
          (for-each
           (lambda (e)
-            (inline-ok? e ivars args arg-used return mut-pos))
+            (inline-ok? e ivars args arg-used return mutated ref-checked-tbl))
           (ast:lambda-formals->list exp))
          (for-each
           (lambda (e)
-            (inline-ok? e ivars args arg-used return mut-pos))
+            (inline-ok? e ivars args arg-used return mutated ref-checked-tbl))
           (ast:lambda-body exp)))
         ((const? exp) #t)
         ((quote? exp) #t)
         ((define? exp)
-         (inline-ok? (define->var exp) ivars args arg-used return mut-pos)
-         (inline-ok? (define->exp exp) ivars args arg-used return mut-pos))
+         (inline-ok? (define->var exp) ivars args arg-used return mutated ref-checked-tbl)
+         (inline-ok? (define->exp exp) ivars args arg-used return mutated ref-checked-tbl))
         ((set!? exp)
-         (inline-ok? (set!->var exp) ivars args arg-used return #t)
-         (inline-ok? (set!->exp exp) ivars args arg-used return mut-pos))
+         (inline-ok? (set!->var exp) ivars args arg-used return #t ref-checked-tbl)
+         (inline-ok? (set!->exp exp) ivars args arg-used return mutated ref-checked-tbl))
         ((if? exp)
-          (inline-ok? (if->condition exp) ivars args arg-used return mut-pos)
-          (inline-ok? (if->then exp) ivars args arg-used return mut-pos)
-          (inline-ok? (if->else exp) ivars args arg-used return mut-pos))
+          (inline-ok? (if->condition exp) ivars args arg-used return mutated ref-checked-tbl)
+          (inline-ok? (if->then exp) ivars args arg-used return mutated ref-checked-tbl)
+          (inline-ok? (if->else exp) ivars args arg-used return mutated ref-checked-tbl))
         ((app? exp)
          (cond
           ((and (prim? (car exp))
-                (not mut-pos) ;; Do not proceed if result may be mutated
+                (not mutated) ;; Do not proceed if result may be mutated
                 (not (prim:mutates? (car exp))))
            ;; If primitive does not mutate its args, ignore if ivar is used
            (for-each
             (lambda (e)
               (if (not (ref? e))
-                  (inline-ok? e ivars args arg-used return mut-pos)))
+                  (inline-ok? e ivars args arg-used return mutated ref-checked-tbl)))
             (reverse (cdr exp))))
           (else
            ;; If prim mutates, ensure an ivar is not part of the 
            ;; expression that is mutated.
            ;; TODO: for now, assumes the cadr is mutated.
-           (if (prim:mutates? (car exp))
-               (inline-ok? (cadr exp) ivars args arg-used return #t))
+           (cond
+            ((prim:mutates? (car exp))
+             (trace:error `(prim-mutates ,exp))
+             (inline-ok? (cadr exp) ivars args arg-used return #t ref-checked-tbl)))
 
            (for-each
             (lambda (e)
-              (inline-ok? e ivars args arg-used return mut-pos))
+              (inline-ok? e ivars args arg-used return mutated ref-checked-tbl))
             (reverse exp))))) ;; Ensure args are examined before function
         (else
           (error `(Unexpected expression passed to inline prim check ,exp)))))
