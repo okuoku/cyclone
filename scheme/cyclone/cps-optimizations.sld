@@ -582,7 +582,7 @@
     (define (inline-prim-call? exp ivars args)
       (call/cc
         (lambda (return)
-          (inline-ok? exp ivars args (list #f) return)
+          (inline-ok? exp ivars args (list #f) return #f)
           (return #t))))
 
     ;; Make sure inlining a primitive call will not cause out-of-order execution
@@ -593,7 +593,9 @@
     ;;            it cannot be optimized-out and we have to bail.
     ;;            This is a cons "box" so it can be mutated.
     ;; return - call into this continuation to return early
-    (define (inline-ok? exp ivars args arg-used return)
+    ;; mut-pos - expression is in a mutator's variable position, EG:
+    ;;           the "v" part of (set-car! v #f)
+    (define (inline-ok? exp ivars args arg-used return mut-pos)
       ;(trace:error `(inline-ok? ,exp ,ivars ,args ,arg-used))
       (cond
         ((ref? exp)
@@ -603,42 +605,53 @@
           ((member exp ivars)
            (return #f))
           (else 
-           #t)))
+           (let ((db-var (adb:get/default exp #f)))
+            (if #f ;;TODO: db-var
+                ;; If there is an assigned value, check it, too
+                (inline-ok? (adbv:assigned-value db-var) ivars args arg-used return mut-pos)
+                #t)))))
         ((ast:lambda? exp)
          (for-each
           (lambda (e)
-            (inline-ok? e ivars args arg-used return))
+            (inline-ok? e ivars args arg-used return mut-pos))
           (ast:lambda-formals->list exp))
          (for-each
           (lambda (e)
-            (inline-ok? e ivars args arg-used return))
+            (inline-ok? e ivars args arg-used return mut-pos))
           (ast:lambda-body exp)))
         ((const? exp) #t)
         ((quote? exp) #t)
         ((define? exp)
-         (inline-ok? (define->var exp) ivars args arg-used return)
-         (inline-ok? (define->exp exp) ivars args arg-used return))
+         (inline-ok? (define->var exp) ivars args arg-used return mut-pos)
+         (inline-ok? (define->exp exp) ivars args arg-used return mut-pos))
         ((set!? exp)
-         (inline-ok? (set!->var exp) ivars args arg-used return)
-         (inline-ok? (set!->exp exp) ivars args arg-used return))
+         (inline-ok? (set!->var exp) ivars args arg-used return #t)
+         (inline-ok? (set!->exp exp) ivars args arg-used return mut-pos))
         ((if? exp)
-          (inline-ok? (if->condition exp) ivars args arg-used return)
-          (inline-ok? (if->then exp) ivars args arg-used return)
-          (inline-ok? (if->else exp) ivars args arg-used return))
+          (inline-ok? (if->condition exp) ivars args arg-used return mut-pos)
+          (inline-ok? (if->then exp) ivars args arg-used return mut-pos)
+          (inline-ok? (if->else exp) ivars args arg-used return mut-pos))
         ((app? exp)
          (cond
           ((and (prim? (car exp))
+                (not mut-pos) ;; Do not proceed if result may be mutated
                 (not (prim:mutates? (car exp))))
            ;; If primitive does not mutate its args, ignore if ivar is used
            (for-each
             (lambda (e)
               (if (not (ref? e))
-                  (inline-ok? e ivars args arg-used return)))
+                  (inline-ok? e ivars args arg-used return mut-pos)))
             (reverse (cdr exp))))
           (else
+           ;; If prim mutates, ensure an ivar is not part of the 
+           ;; expression that is mutated.
+           ;; TODO: for now, assumes the cadr is mutated.
+           (if (prim:mutates? (car exp))
+               (inline-ok? (cadr exp) ivars args arg-used return #t))
+
            (for-each
             (lambda (e)
-              (inline-ok? e ivars args arg-used return))
+              (inline-ok? e ivars args arg-used return mut-pos))
             (reverse exp))))) ;; Ensure args are examined before function
         (else
           (error `(Unexpected expression passed to inline prim check ,exp)))))
