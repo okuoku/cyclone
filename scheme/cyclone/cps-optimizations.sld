@@ -652,6 +652,7 @@
            ;; If primitive does not mutate its args, ignore if ivar is used
            (for-each
             (lambda (e)
+;; TODO: see below, if flag set do not ignore
               (if (not (ref? e))
                   (inline-ok? e ivars args arg-used return mutated ref-checked-tbl)))
             (reverse (cdr exp))))
