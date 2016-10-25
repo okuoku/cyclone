@@ -583,11 +583,22 @@
 
     ;; Helper for the next function
     (define (inline-prim-call? exp ivars args)
-      ;(trace:error `(inline-prim-call? ,exp ,ivars ,args))
+      (trace:error `(inline-prim-call? ,exp ,ivars ,args))
       (call/cc
         (lambda (return)
-          (inline-ok? exp ivars args (list #f) return #f *inline-prim-call-refs*)
-          ;(inline-ok? exp ivars args (list #f) return #f (make-hash-table))
+           ;; Trying to simplify below by using the analysis DB, at least
+           ;; as a starting point. 
+           (for-each
+             (lambda (ivar)
+              (with-var ivar (lambda (adb-var)
+                ;; Referenced as more than just an arg
+                (if (> (length (adbv:ref-by adb-var)) 1)
+                    (return #f))
+              ))
+             )
+             ivars)
+      ;    (inline-ok? exp ivars args (list #f) return #f *inline-prim-call-refs*)
+      ;    ;(inline-ok? exp ivars args (list #f) return #f (make-hash-table))
           (return #t))))
 
     ;; Make sure inlining a primitive call will not cause out-of-order execution
