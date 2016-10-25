@@ -583,7 +583,7 @@
 
     ;; Helper for the next function
     (define (inline-prim-call? exp ivars args)
-      (trace:error `(inline-prim-call? ,exp ,ivars ,args))
+      ;(trace:error `(inline-prim-call? ,exp ,ivars ,args))
       (call/cc
         (lambda (return)
            ;; Trying to simplify below by using the analysis DB, at least
