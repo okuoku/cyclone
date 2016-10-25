@@ -588,12 +588,15 @@
         (lambda (return)
            ;; Trying to simplify below by using the analysis DB, at least
            ;; as a starting point. 
+           ;;
+           ;; TODO: not good enough, rejects WAY too many valid inlines
+           ;;
            (for-each
              (lambda (ivar)
               (with-var ivar (lambda (adb-var)
                 ;; Referenced as more than just an arg
                 (if (> (length (adbv:ref-by adb-var)) 1)
-                    (return #f))
+                    (return #f)) ;; maybe, if #f need to do more (maybe even calling existing inline-ok function)
               ))
              )
              ivars)
