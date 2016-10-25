@@ -428,7 +428,7 @@
       (let ((refs (if (null? refs*)
                       (make-hash-table)
                       (car refs*))))
-(trace:error `(opt:inline-prims ,exp))
+;(trace:error `(opt:inline-prims ,exp))
         (cond
           ((ref? exp) 
            ;; Replace lambda variables, if necessary
@@ -500,7 +500,7 @@
                     (prim-calls->arg-variables (cdr exp))
                     (ast:lambda-formals->list (car exp)))
              )
-(trace:error `(inlining args ,exp ,(ast:lambda-formals->list (car exp)) ,(cdr exp)))
+;(trace:error `(inlining args ,exp ,(ast:lambda-formals->list (car exp)) ,(cdr exp)))
              (let ((args (cdr exp)))
                (for-each
                 (lambda (param)
@@ -579,12 +579,15 @@
     (define (prim-call->arg-variables exp)
       (filter symbol? (cdr exp)))
 
+    (define *inline-prim-call-refs* (make-hash-table))
+
     ;; Helper for the next function
     (define (inline-prim-call? exp ivars args)
-      (trace:error `(inline-prim-call? ,exp ,ivars ,args))
+      ;(trace:error `(inline-prim-call? ,exp ,ivars ,args))
       (call/cc
         (lambda (return)
-          (inline-ok? exp ivars args (list #f) return #f (make-hash-table))
+          (inline-ok? exp ivars args (list #f) return #f *inline-prim-call-refs*)
+          ;(inline-ok? exp ivars args (list #f) return #f (make-hash-table))
           (return #t))))
 
     ;; Make sure inlining a primitive call will not cause out-of-order execution
@@ -599,10 +602,17 @@
     ;;           the "v" part of (set-car! v #f)
     ;; ref-checked-tbl - hashtable of refs that have already been checked
     (define (inline-ok? exp ivars args arg-used return mutated ref-checked-tbl)
-      (trace:error `(inline-ok? ,exp ,ivars ,args ,arg-used ,mutated))
+      ;(trace:error `(inline-ok? ,exp ,ivars ,args ,arg-used ,mutated))
       (cond
         ((ref? exp)
-         (let ((db-var (adb:get/default exp #f)))
+         (let ((db-var (adb:get/default exp #f))
+               ;; TODO: when this was working, key was exp
+               (key exp #;(string-append
+                      (symbol->string exp)
+                      (if mutated "t" "f")
+                      (foldr string-append "" (map symbol->string ivars))
+                      ))
+               )
           (cond
            ;; If the ref has been assigned a value, inspect that value, too
            ((and db-var
@@ -610,10 +620,10 @@
                  ; TODO: removing this line lets the set-car! example work, but
                  ; does it slow everything else down too much? need to turn off
                  ; debug traces and try it out
-                 ;(not (hash-table-exists? ref-checked-tbl exp))
+                 (not (hash-table-exists? ref-checked-tbl key))
             )
-            (trace:error `(inline-ok ,exp ,(adbv:assigned-value db-var) ,ivars ,args ,arg-used ,mutated))
-            (hash-table-set! ref-checked-tbl exp #t) ;; only need to check each ref once
+            ;(trace:error `(inline-ok ,key ,exp ,(adbv:assigned-value db-var) ,ivars ,args ,arg-used ,mutated))
+            (hash-table-set! ref-checked-tbl key #t) ;; only need to check each ref once
             (inline-ok? (adbv:assigned-value db-var) ivars args arg-used return mutated ref-checked-tbl))))
          ;(if (member exp args)
          ;    (set-car! arg-used #t))
@@ -623,7 +633,7 @@
           ((member exp args)
            (set-car! arg-used #t))
           ((member exp ivars)
-           (trace:error `(inline-ok? return #f ,exp ,ivars))
+           ;(trace:error `(inline-ok? return #f ,exp ,ivars))
            (return #f))
           (else 
            #t))
@@ -665,24 +675,29 @@
            ;; If prim mutates, ensure an ivar is not part of the 
            ;; expression that is mutated.
            ;; TODO: for now, assumes the cadr is mutated.
-           (cond
-            ((prim:mutates? (car exp))
-             (trace:error `(prim-mutates ,exp ,ivars))
+           ;(cond
+           ; ((prim:mutates? (car exp))
+           ;  ;(trace:error `(prim-mutates ,exp ,ivars))
 ;TODO: 
-             ;; In this case pass a flag indicating that it is not OK to 
-             ;; ignore prim, non-mutating calls. these have to fail because any prim
-             ;; being passed to them may be mutated, and the behavior of the program
-             ;; may be changed if the order of evaluation is modified by inlining.
-             (inline-ok? (cadr exp) ivars args arg-used return #t ref-checked-tbl)
-             (trace:error `(prim-mutates inline-ok? did not return))
-             ))
+           ;  ;; In this case pass a flag indicating that it is not OK to 
+           ;  ;; ignore prim, non-mutating calls. these have to fail because any prim
+           ;  ;; being passed to them may be mutated, and the behavior of the program
+           ;  ;; may be changed if the order of evaluation is modified by inlining.
+           ;  (inline-ok? (cadr exp) ivars args arg-used return #t ref-checked-tbl)
+           ;  ;(trace:error `(prim-mutates inline-ok? did not return))
+           ;  ))
 
            (for-each
-            (lambda (e)
+            (lambda (e mutated)
               (inline-ok? e ivars args arg-used return 
                           mutated 
                           ref-checked-tbl))
-            (reverse exp))))) ;; Ensure args are examined before function
+            (reverse exp)
+            (let ((m (make-list (length exp) mutated)))
+              (if (prim:mutates? (car exp))
+                  (set-car! (cdr m) #t))
+              (reverse m))
+            )))) ;; Ensure args are examined before function
         (else
           (error `(Unexpected expression passed to inline prim check ,exp)))))
 
@@ -694,7 +709,7 @@
 ;;      ;; Find candidates for beta expansion
 ;;      (for-each
 ;;        (lambda (db-entry)
-;;;(trace:error `(check for lambda candidate
+;;;;(trace:error `(check for lambda candidate
 ;;          (cond
 ;;            ((number? (car db-entry))
 ;;             ;; TODO: this is just exploratory code, can be more efficient
