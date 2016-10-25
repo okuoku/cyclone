@@ -580,7 +580,7 @@
 
     ;; Helper for the next function
     (define (inline-prim-call? exp ivars args)
-      (trace:error `(inline-prim-call? ,exp ,ivars ,args))
+      ;(trace:error `(inline-prim-call? ,exp ,ivars ,args))
       (call/cc
         (lambda (return)
           (inline-ok? exp ivars args (list #f) return #f (make-hash-table))
@@ -661,8 +661,15 @@
            ;; TODO: for now, assumes the cadr is mutated.
            (cond
             ((prim:mutates? (car exp))
-             (trace:error `(prim-mutates ,exp))
-             (inline-ok? (cadr exp) ivars args arg-used return #t ref-checked-tbl)))
+             (trace:error `(prim-mutates ,exp ,ivars))
+TODO: 
+             ;; In this case pass a flag indicating that it is not OK to 
+             ;; ignore prim, non-mutating calls. these have to fail because any prim
+             ;; being passed to them may be mutated, and the behavior of the program
+             ;; may be changed if the order of evaluation is modified by inlining.
+             (inline-ok? (cadr exp) ivars args arg-used return #t ref-checked-tbl)
+             (trace:error `(prim-mutates inline-ok? did not return))
+             ))
 
            (for-each
             (lambda (e)
