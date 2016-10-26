@@ -428,7 +428,7 @@
       (let ((refs (if (null? refs*)
                       (make-hash-table)
                       (car refs*))))
-;(trace:error `(opt:inline-prims ,exp))
+(trace:error `(opt:inline-prims ,exp))
         (cond
           ((ref? exp) 
            ;; Replace lambda variables, if necessary
@@ -500,6 +500,7 @@
                     (prim-calls->arg-variables (cdr exp))
                     (ast:lambda-formals->list (car exp)))
              )
+(trace:error `(inlining args ,exp ,(ast:lambda-formals->list (car exp)) ,(cdr exp)))
              (let ((args (cdr exp)))
                (for-each
                 (lambda (param)
@@ -580,7 +581,7 @@
 
     ;; Helper for the next function
     (define (inline-prim-call? exp ivars args)
-      ;(trace:error `(inline-prim-call? ,exp ,ivars ,args))
+      (trace:error `(inline-prim-call? ,exp ,ivars ,args))
       (call/cc
         (lambda (return)
           (inline-ok? exp ivars args (list #f) return #f (make-hash-table))
@@ -598,7 +599,7 @@
     ;;           the "v" part of (set-car! v #f)
     ;; ref-checked-tbl - hashtable of refs that have already been checked
     (define (inline-ok? exp ivars args arg-used return mutated ref-checked-tbl)
-      ;(trace:error `(inline-ok? ,exp ,ivars ,args ,arg-used ,mutated))
+      (trace:error `(inline-ok? ,exp ,ivars ,args ,arg-used ,mutated))
       (cond
         ((ref? exp)
          (let ((db-var (adb:get/default exp #f)))
@@ -606,22 +607,26 @@
            ;; If the ref has been assigned a value, inspect that value, too
            ((and db-var
                  (adbv:assigned-value db-var) ;; Wait until it has a value
-                 (not (hash-table-exists? ref-checked-tbl exp))
+                 ; TODO: removing this line lets the set-car! example work, but
+                 ; does it slow everything else down too much? need to turn off
+                 ; debug traces and try it out
+                 ;(not (hash-table-exists? ref-checked-tbl exp))
             )
             (trace:error `(inline-ok ,exp ,(adbv:assigned-value db-var) ,ivars ,args ,arg-used ,mutated))
             (hash-table-set! ref-checked-tbl exp #t) ;; only need to check each ref once
             (inline-ok? (adbv:assigned-value db-var) ivars args arg-used return mutated ref-checked-tbl))))
-         (if (member exp args)
-             (set-car! arg-used #t))
-         (if (member exp ivars)
-             (return #f))
-         ;(cond
-         ; ((member exp args)
-         ;  (set-car! arg-used #t))
-         ; ((member exp ivars)
-         ;  (return #f))
-         ; (else 
-         ;  #t))
+         ;(if (member exp args)
+         ;    (set-car! arg-used #t))
+         ;(if (member exp ivars)
+         ;    (return #f))
+         (cond
+          ((member exp args)
+           (set-car! arg-used #t))
+          ((member exp ivars)
+           (trace:error `(inline-ok? return #f ,exp ,ivars))
+           (return #f))
+          (else 
+           #t))
         )
         ((ast:lambda? exp)
          (for-each
@@ -663,7 +668,7 @@
            (cond
             ((prim:mutates? (car exp))
              (trace:error `(prim-mutates ,exp ,ivars))
-TODO: 
+;TODO: 
              ;; In this case pass a flag indicating that it is not OK to 
              ;; ignore prim, non-mutating calls. these have to fail because any prim
              ;; being passed to them may be mutated, and the behavior of the program
