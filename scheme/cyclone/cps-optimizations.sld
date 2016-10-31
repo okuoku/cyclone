@@ -591,18 +591,44 @@
            ;;
            ;; TODO: not good enough, rejects WAY too many valid inlines
            ;;
-           (for-each
-             (lambda (ivar)
-              (with-var ivar (lambda (adb-var)
-                ;; Referenced as more than just an arg
-                (if (> (length (adbv:ref-by adb-var)) 1)
-                    (return #f)) ;; maybe, if #f need to do more (maybe even calling existing inline-ok function)
-              ))
-             )
-             ivars)
-      ;    (inline-ok? exp ivars args (list #f) return #f *inline-prim-call-refs*)
-      ;    ;(inline-ok? exp ivars args (list #f) return #f (make-hash-table))
-          (return #t))))
+
+           ;; Check to see if variables to inline are used as more than
+           ;; just arguments (that is, they are referenced more than once.
+           ;; If so, we need to perform more analysis to figure out if they
+           ;; can be safely inlined.
+
+           (let ((safe-to-inline 
+                  (foldl ;(lambda (x accum) (if x x accum)) #f '(1 2 #f 3))
+                    (lambda (ivar accum)
+                     (cond
+                      ;; Not safe to inline, just return #f
+                      ((not accum) #f)
+                      ;; Else check current var
+                      (else
+                       (with-var ivar (lambda (adb-var)
+                         ;; Maybe unsafe if referenced as more than just an arg
+                         (<= (length (adbv:ref-by adb-var)) 1))))))
+                    #t
+                    ivars)))
+            (if (not safe-to-inline)
+              ;(inline-ok? exp ivars args (list #f) return #f *inline-prim-call-refs*))
+              (inline-ok? exp ivars args (list #f) return #f (make-hash-table)))
+            (return #t)))))
+
+; OBSOLETE:
+;           #;(for-each
+;             (lambda (ivar)
+;              (with-var ivar (lambda (adb-var)
+;                ;; Referenced as more than just an arg
+;                (if (> (length (adbv:ref-by adb-var)) 1)
+;                    (return #f)) ;; maybe, if #f need to do more (maybe even calling existing inline-ok function)
+;              ))
+;             )
+;             ivars)
+;
+;      ;    (inline-ok? exp ivars args (list #f) return #f *inline-prim-call-refs*)
+;      ;    ;(inline-ok? exp ivars args (list #f) return #f (make-hash-table))
+;          (return #t))))
 
     ;; Make sure inlining a primitive call will not cause out-of-order execution
     ;; exp - expression to search
