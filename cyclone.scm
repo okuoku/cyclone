@@ -228,6 +228,9 @@
       (trace:info "---------------- after CPS:")
       (trace:info input-program) ;pretty-print
 
+      (trace:info "---------------- after cps UDF analysis:")
+      (trace:info (udf:inline input-program))
+
       (set! input-program
         (optimize-cps input-program))
       (trace:info "---------------- after cps optimizations:")
