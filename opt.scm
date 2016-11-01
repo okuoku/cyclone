@@ -67,7 +67,79 @@
   (string-upcase (string-map))
   (string-downcase (string-map))
   (string-foldcase (string-map)))
-'((call/cc (f))
+'((in-port:get-buf ())
+ (in-port:get-lnum ())
+ (in-port:get-cnum ())
+ (in-port:read-buf! (in-port:set-buf!))
+ (add-tok ())
+ (get-toks (add-tok ->tok))
+ (->tok (parse-atom reverse))
+ (dotted? (reverse))
+ (->dotted-list (->dotted-list))
+ (parse/tok
+   (add-tok
+     ->tok
+     in-port:set-buf!
+     parse
+     add-tok
+     ->tok
+     parse))
+ (sign? ())
+ (token-numeric?
+   (k$605 k$605
+          char-numeric?
+          k$601
+          k$601
+          sign?
+          char-numeric?
+          char-numeric?))
+ (read-block-comment
+   (read-block-comment
+     read-block-terminator
+     get-next-char))
+ (read-block-terminator
+   (read-block-comment
+     read-block-terminator
+     get-next-char))
+ (parse-literal-identifier (parse parse-li-rec))
+ (parse-number
+   (k$531 k$531
+          hex-digit?
+          k$531
+          token-numeric?
+          k$531
+          parse-error
+          in-port:get-cnum
+          in-port:get-lnum
+          parse
+          tok->num$329
+          parse-number-rec))
+ (parse-number-rec
+   (k$517 hex-digit?
+          reverse
+          in-port:set-buf!
+          next$326
+          k$513
+          char>?
+          k$511
+          char>?
+          k$511
+          k$506
+          parse-error
+          in-port:get-cnum
+          in-port:get-lnum
+          next$326
+          char-numeric?
+          next$326
+          next$326
+          sign?
+          parse-number-rec
+          get-next-char))
+ (hex-digit?
+   (k$495 char<=? char>=? char<=? char>=?))
+ (cyc-read
+   (k$488 current-input-port parse reg-port)))
+#;((call/cc (f))
  (Cyc-version ())
  (and (list rename$2167 rename$2167))
  (or (list list
