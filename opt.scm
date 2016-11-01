@@ -67,9 +67,9 @@
   (string-upcase (string-map))
   (string-downcase (string-map))
   (string-foldcase (string-map)))
-'((call/cc (k f))
- (Cyc-version (k$5836))
- (and (list rename$2167 rename$2167 k$5822 k$5822))
+'((call/cc (f))
+ (Cyc-version ())
+ (and (list rename$2167 rename$2167))
  (or (list list
            rename$2164
            rename$2164
@@ -78,9 +78,7 @@
            list
            list
            rename$2164
-           rename$2164
-           k$5797
-           k$5797))
+           rename$2164))
  (let (k$5792
        error
        k$5789
@@ -91,9 +89,7 @@
        k$5783
        list?
        error
-       k$5736
        rename$2157
-       k$5736
        rename$2157
        rename$2157
        rename$2157
@@ -114,12 +110,10 @@
         k$5721
         list?
         error
-        k$5691
         rename$2153
         rename$2153
-        k$5691
         rename$2153))
- (letrec (k$5667 append map map k$5683 map map list))
+ (letrec (append map map k$5683 map map list))
  (cond (compare$2093
         rename$2094
         k$5540
@@ -144,10 +138,9 @@
         rename$2094
         error
         compare$2093
-        rename$2094
-        k$5488))
- (when (k$5384 error k$5381 error k$5365))
- (unless (k$5360 error k$5357 error k$5341))
+        rename$2094))
+ (when (k$5384 error k$5381 error))
+ (unless (k$5360 error k$5357 error))
  (do (k$5280
       rename$2069
       rename$2069
@@ -157,7 +150,6 @@
       rename$2069
       rename$2069
       rename$2069
-      k$5262
       map
       list
       rename$2069
@@ -169,51 +161,46 @@
       error
       rename$2069
       rename$2069))
- (values (k$5163 k$5163 k$5158 k$5158))
+ (values (k$5163 k$5163))
  (dynamic-wind
-   (k$5140 after$2049 thunk$2050 before$2051))
- (call-with-port (k$5135 proc$2046))
- (Cyc-bin-op (k$5127 Cyc-bin-op cmp$2045 k$5127))
+   (after$2049 thunk$2050 before$2051))
+ (call-with-port (proc$2046))
+ (Cyc-bin-op (Cyc-bin-op cmp$2045))
  (Cyc-bin-op-char (Cyc-bin-op cmp$2040))
  (char=? (Cyc-bin-op-char))
  (char<? (Cyc-bin-op-char))
  (char>? (Cyc-bin-op-char))
  (char<=? (Cyc-bin-op-char))
  (char>=? (Cyc-bin-op-char))
- (string=? (k$5096))
- (string<? (k$5092))
- (string<=? (k$5088))
- (string>? (k$5084))
- (string>=? (k$5080))
- (member-helper
-   (member-helper k$5073 cmp-proc$2010 k$5073))
+ (string=? ())
+ (string<? ())
+ (string<=? ())
+ (string>? ())
+ (string>=? ())
+ (member-helper (member-helper cmp-proc$2010))
  (member (member-helper member-helper))
- (assoc-helper
-   (k$5061 cmp?$2004 assoc-helper k$5057 k$5057))
+ (assoc-helper (k$5061 cmp?$2004 assoc-helper))
  (assoc (assoc-helper assoc-helper))
- (foldl (foldl func$2000 k$5045))
- (foldr (func$1997 foldr k$5038))
- (flush-output-port
-   (k$5006 k$5006 current-output-port))
- (write-string
-   (k$5000 k$5000 current-output-port))
- (write-char (k$4994 k$4994 current-output-port))
- (not (k$4987 k$4987))
- (zero? (k$4974))
- (positive? (k$4971))
- (negative? (k$4968))
- (list (k$4950))
+ (foldl (foldl func$2000))
+ (foldr (func$1997 foldr))
+ (flush-output-port (current-output-port))
+ (write-string (current-output-port))
+ (write-char (current-output-port))
+ (not ())
+ (zero? ())
+ (positive? ())
+ (negative? ())
+ (list ())
  (list-copy (foldr k$4934))
- (receive (k$4912))
+ (receive ())
  (car+cdr (values))
- (list-tail (list-tail k$4833 zero?))
- (list-ref (k$4829 list-tail))
+ (list-tail (list-tail zero?))
+ (list-ref (list-tail))
  (reverse (foldl))
  (boolean=? (Cyc-obj=?))
  (symbol=? (Cyc-obj=?))
  (Cyc-obj=?
-   (k$4500
-     call/cc
+   (call/cc
      k$4503
      for-each
      return$1777
@@ -222,9 +209,9 @@
  (error (raise))
  (raise (list k$4144 r$4140))
  (raise-continuable (list k$4135 r$4131))
- (modulo (k$4083 k$4083 k$4083 k$4083 remainder))
- (odd? (k$4079 modulo))
- (even? (k$4075 modulo))
+ (modulo (remainder))
+ (odd? (modulo))
+ (even? (modulo))
  (exact-integer-sqrt
    (k$4069
      k$4069
@@ -237,28 +224,28 @@
      exact
      truncate
      sqrt))
- (exact-integer? (k$4056 k$4056 exact?))
+ (exact-integer? (exact?))
  (inexact? (not exact?))
  (max (foldl k$4044 k$4044))
  (min (foldl k$4038 k$4038))
  (gcd/main (gcd/main modulo abs))
- (gcd/entry (foldl k$4020))
+ (gcd/entry (foldl))
  (lcm/main (abs gcd/main))
- (lcm/entry (foldl k$4007))
- (denominator (k$4004))
- (numerator (k$4001))
+ (lcm/entry (foldl))
+ (denominator ())
+ (numerator ())
  (quotient (truncate))
  (truncate/
    (values truncate-remainder truncate-quotient))
  (floor-quotient
-   (k$3983 exact? exact? k$3980 exact floor))
- (floor-remainder (k$3975 floor-quotient))
+   (k$3983 exact? exact? exact floor))
+ (floor-remainder (floor-quotient))
  (floor/ (values floor-remainder floor-quotient))
- (square (k$3967))
- (identifier->symbol (k$3960))
- (find-tail (k$3953 find-tail k$3953 pred$1596))
- (find (k$3949 k$3949 find-tail))
- (cons-source (k$3946))
+ (square ())
+ (identifier->symbol ())
+ (find-tail (find-tail pred$1596))
+ (find (find-tail))
+ (cons-source ())
  (let*-values
    (k$3425
      k$3425
@@ -308,8 +295,7 @@
      error
      k$3329
      k$3329
-     k$3329
-     k$3326))
+     k$3329))
  (let-values
    (k$3289
      k$3289
@@ -478,8 +464,7 @@
      k$2981
      k$2981
      k$2981
-     k$2981
-     k$2978))
+     k$2981))
  (guard (k$2771
           k$2771
           k$2771
@@ -572,8 +557,7 @@
           list?
           k$2768
           error
-          k$2768
-          k$2765))
+          k$2768))
  (guard-aux
    (k$2739
      k$2739
@@ -723,20 +707,12 @@
      k$2465
      k$2465
      k$2465
-     k$2465
-     k$2462))
- (make-type-predicate
-   (k$2446 k$2446 k$2446 k$2445))
+     k$2465))
+ (make-type-predicate (k$2446 k$2446 k$2446))
  (type-slot-offset (_list-index))
- (make-getter (k$2422 k$2421))
- (_list-index
-   (k$2405
-     _list-index
-     k$2405
-     _list-index
-     k$2405
-     k$2405))
- (record? (k$2398 k$2398 k$2398)))
+ (make-getter (k$2422))
+ (_list-index (_list-index _list-index))
+ (record? ()))
 )
 (pretty-print (udf:find-inlinable candidates))
 
