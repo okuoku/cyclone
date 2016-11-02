@@ -1144,7 +1144,14 @@
 
   (let ((compiled-program-lst '())
         (compiled-program #f)
-        (compiled-inline-functions #f))
+        (compiled-inline-functions #f)
+        (define-var->inline 
+          (lambda (expr)
+            (string->symbol 
+               (string-append
+                 (symbol->string (define->var expr))
+                 "-inline"))))
+       )
     ;; Compile program, using for-each to guarantee execution order,
     ;; since c-compile-program has side-effects.
     (for-each
@@ -1160,15 +1167,24 @@
           (and (define? expr)
                (member (define->var expr) inline-user-functions)))
         input-program))
+    (set! globals
+      (append globals
+        (map 
+          define-var->inline
+          compiled-inline-functions)))
     ;; TODO: pass an 'inline' flag to the c-compile functions, and use that
     ;; to generate different code for these
-    #;(set! compiled-inline-functions
+    (set! compiled-inline-functions
       (map
         (lambda (expr)
-          (c-compile-program expr src-file #t))
+          (c-compile-program 
+            `(define 
+               ,(define-var->inline expr)
+               ,@(define->exp expr))
+            src-file #t))
         compiled-inline-functions))
     (trace:debug `(compiled-inline-functions ,compiled-inline-functions))
-
+    ;; END inlines
 
     ;; Get top-level string
     (set! compiled-program
