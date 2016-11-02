@@ -850,7 +850,7 @@
 ;; once given a C name, produce a C function
 ;; definition with that name.
 
-;; These procedures are stored up an eventually 
+;; These procedures are stored up and eventually 
 ;; emitted.
 
 ; type lambda-id = natural
@@ -1142,7 +1142,8 @@
                  (string-append prefix suffix)))))))))
 
   (let ((compiled-program-lst '())
-        (compiled-program #f))
+        (compiled-program #f)
+        (compiled-inline-functions #f))
     ;; Compile program, using for-each to guarantee execution order,
     ;; since c-compile-program has side-effects.
     (for-each
@@ -1150,6 +1151,17 @@
         (set! compiled-program-lst
           (cons (c-compile-program expr src-file) compiled-program-lst)))
       input-program)
+
+    ;; Compile inlinable functions
+    (set! compiled-inline-functions
+      (filter
+        (lambda (expr)
+          (and (define? expr)
+               (member (define->var expr) inline-user-functions)))
+        input-program))
+    (trace:debug `(compiled-inline-functions ,compiled-inline-functions))
+    ;; TODO: pass an 'inline' flag to the c-compile functions, and use that
+    ;; to generate different code for these
 
     ;; Get top-level string
     (set! compiled-program
