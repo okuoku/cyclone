@@ -36,6 +36,7 @@
       (define lib-name '())
       (define lib-exports '())
       (define lib-renamed-exports '())
+      (define inline-user-functions '())
       (define c-headers '())
       (define rename-env (env:extend-environment '() '() '()))
 
@@ -232,7 +233,8 @@
       (define inline-analysis (udf:inline input-program))
       (trace:info inline-analysis)
       (trace:info "---------------- UDF inlinable functions: ")
-      (trace:info (udf:find-inlinable inline-analysis))
+      (set! inline-user-functions (udf:find-inlinable inline-analysis))
+      (trace:info inline-user-functions)
 
       (set! input-program
         (optimize-cps input-program))
@@ -282,6 +284,7 @@
                     lib-exports 
                     imported-vars
                     module-globals
+                    inline-user-functions
                     c-headers
                     lib-deps
                     src-file) 
