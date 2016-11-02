@@ -1160,9 +1160,15 @@
           (and (define? expr)
                (member (define->var expr) inline-user-functions)))
         input-program))
-    (trace:debug `(compiled-inline-functions ,compiled-inline-functions))
     ;; TODO: pass an 'inline' flag to the c-compile functions, and use that
     ;; to generate different code for these
+    #;(set! compiled-inline-functions
+      (map
+        (lambda (expr)
+          (c-compile-program expr src-file #t))
+        compiled-inline-functions))
+    (trace:debug `(compiled-inline-functions ,compiled-inline-functions))
+
 
     ;; Get top-level string
     (set! compiled-program
