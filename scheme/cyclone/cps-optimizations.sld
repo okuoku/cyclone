@@ -474,9 +474,9 @@
                   (equal? (length (cdr exp))
                           (length (ast:lambda-formals->list (car exp))))
                   (or
-                ;; This and is not really for primitives, but rather checking 
-                ;; for constants to optimize out. This juts happens to be a 
-                ;; convenient place for it since the optimization is the same.
+                ;; This "and" is not for primitives, but rather checking 
+                ;; for constants to optimize out. This just happens to be 
+                ;; a convenient place since the optimization is the same.
                 (and
                   ;; Check each parameter
                   (every
