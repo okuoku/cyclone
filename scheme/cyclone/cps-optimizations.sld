@@ -694,25 +694,46 @@
       ;; files so other modules can take advantage of the same inlines.
       ;; would need to generalize meta file macro support a bit though, and
       ;; add scheme base as a special case (maybe other modules, too)
-      (map
-        (lambda (e)
-          (cons
-            (define->var e) 
-            (let ((rec (list (list))))
-              (call/cc
-                (lambda (return)
-                  (for-each
-                    (lambda (expr)
-                      (udf:analyze 
-                        expr
-                        rec
-                        (lambda (return-value)
-                          (when (not return-value)
-                            (set! rec #f)) ;; Analysis was aborted, clear rec
-                          return-value)))
-                    (ast:lambda-body (car (define->exp e))))))
-              rec)))
-        (udf:exps->lambdas exp)))
+      (let ((candidates
+              (map
+                (lambda (e)
+                  (cons
+                    (define->var e) 
+                    (let ((rec (list (list))))
+                      (call/cc
+                        (lambda (return)
+                          (for-each
+                            (lambda (expr)
+                              (udf:analyze 
+                                expr
+                                rec
+                                (lambda (return-value)
+                                  (when (not return-value)
+                                    (set! rec #f)) ;; Analysis was aborted, clear rec
+                                  return-value)))
+                            (ast:lambda-body (car (define->exp e))))))
+                      rec)))
+                (udf:exps->lambdas exp))))
+        (filter
+          cdr
+          candidates)))
+
+
+    ;; TODO: make second inline pass to figure out which
+    ;; candidates might be inlinable. 
+    ;; - if a candidate uses a function from another module,
+    ;;   disqualify it (this might change later, with meta info)
+    ;; - if a function only calls candidates and a single cont
+    ;;   (possibly calling the cont more than once), it is inlineable
+    ;; - keep processing list until it is stable??
+
+    ;; TODO: with stable list, do optimizations a second time
+    ;; with inline information, so appropriate udf's can be
+    ;; inlined as needed
+
+    ;; will need to keep list of inlinable udf's so the compiler
+    ;; can generate appropriate fast versions, and eventually
+    ;; so meta file can contain them
 
     ;; TODO: take a list of expressions and return the lambda definitions
     (define (udf:exps->lambdas exps)
