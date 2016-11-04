@@ -229,7 +229,10 @@
       (trace:info input-program) ;pretty-print
 
       (trace:info "---------------- after cps UDF analysis:")
-      (trace:info (udf:inline input-program))
+      (define inline-analysis (udf:inline input-program))
+      (trace:info inline-analysis)
+      (trace:info "---------------- UDF inlinable functions: ")
+      (trace:info (udf:find-inlinable inline-analysis))
 
       (set! input-program
         (optimize-cps input-program))
