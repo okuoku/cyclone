@@ -545,21 +545,25 @@ int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size)
 void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
                    gc_thread_data * thd)
 {
-  gc_heap *h_passed = h;
+  gc_heap *h_passed = h, *next = h;
   gc_free_list *f1, *f2, *f3;
+  size_t tmp;
 //  pthread_mutex_lock(&heap_lock);
-  // Start searching from the last heap page we had a successful
-  // allocation from, unless the current request is for a smaller
-  // block in which case there may be available memory closer to
-  // the start of the heap.
-printf("gc_try_alloc size = %d\n", size);
-  pthread_mutex_lock(&(h->lock));
-  if (size >= h->last_alloc_size) {
-    h = h->next_free;
+//  // Start searching from the last heap page we had a successful
+//  // allocation from, unless the current request is for a smaller
+//  // block in which case there may be available memory closer to
+//  // the start of the heap.
+//  if (size >= h->last_alloc_size) {
+//    h = h->next_free;
+//  }
+  //printf("gc_try_alloc size = %d\n", size);
+  tmp = ck_pr_load_uint(&(h->last_alloc_size));
+  if (size >= tmp) {
+    h = (gc_heap *)ck_pr_load_ptr(&(h->next_free));
   }
-  pthread_mutex_unlock(&(h->lock));
 
-  for (; h; h = h->next) {      // All heaps
+  //for (; h; h = h->next) {      // All heaps
+  while(h) { // All heaps
     pthread_mutex_lock(&(h->lock));
     // TODO: chunk size (ignoring for now)
 
@@ -578,18 +582,31 @@ printf("gc_try_alloc size = %d\n", size);
         if (heap_type != HEAP_HUGE) {
           // Copy object into heap now to avoid any uninitialized memory issues
           gc_copy_obj(f2, obj, thd);
-          //h->free_size -= gc_allocated_bytes(obj, NULL, NULL);
-          cached_heap_free_sizes[heap_type] -=
-              gc_allocated_bytes(obj, NULL, NULL);
+          ////h->free_size -= gc_allocated_bytes(obj, NULL, NULL);
+          //cached_heap_free_sizes[heap_type] -=
+          //    gc_allocated_bytes(obj, NULL, NULL);
+          ck_pr_sub_int(&(cached_heap_free_sizes[heap_type]), 
+                        gc_allocated_bytes(obj, NULL, NULL));
         }
-        h_passed->next_free = h;
-        h_passed->last_alloc_size = size;
+        //h_passed->next_free = h;
+        //h_passed->last_alloc_size = size;
+
+        ck_pr_store_ptr(&(h_passed->next_free), h);
+        ck_pr_store_uint(&(h_passed->last_alloc_size), size);
+//// TODO: no good, this could be the locked h!!
+//        pthread_mutex_lock(&(h_passed->lock));
+//        h_passed->next_free = h;
+//        h_passed->last_alloc_size = size;
+//        pthread_mutex_unlock(&(h_passed->lock));
+
        // pthread_mutex_unlock(&heap_lock);
         pthread_mutex_unlock(&(h->lock));
         return f2;
       }
     }
+    next = h->next;
     pthread_mutex_unlock(&(h->lock));
+    h = next;
   }
   //pthread_mutex_unlock(&heap_lock);
   return NULL;
@@ -746,9 +763,9 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr)
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   gc_heap *orig_heap_ptr = h;
 #endif
-  gc_heap *prev_h = NULL;
+  gc_heap *prev_h = NULL, *next;
 
-printf("Started gc_sweep\n");
+//printf("Started gc_sweep\n");
 //  //
 //  // Lock the heap to prevent issues with allocations during sweep
 //  // It sucks to have to use a coarse-grained lock like this, but let's
@@ -758,10 +775,10 @@ printf("Started gc_sweep\n");
 //  // how much time is even spent sweeping
 //  //
 //  pthread_mutex_lock(&heap_lock);
-  pthread_mutex_lock(&(h->lock));
-  h->next_free = h;
-  h->last_alloc_size = 0;
-  pthread_mutex_unlock(&(h->lock));
+//  h->next_free = h;
+//  h->last_alloc_size = 0;
+    ck_pr_store_ptr(&(h->next_free), h);
+    ck_pr_store_uint(&(h->last_alloc_size), 0);
 
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   fprintf(stderr, "\nBefore sweep -------------------------\n");
@@ -769,7 +786,8 @@ printf("Started gc_sweep\n");
   gc_print_stats(orig_heap_ptr);
 #endif
 
-  for (; h; prev_h = h, h = h->next) {      // All heaps
+  //for (; h; prev_h = h, h = h->next) {      // All heaps
+  while (h) {
     pthread_mutex_lock(&(h->lock));
 #if GC_DEBUG_TRACE
     fprintf(stderr, "sweep heap %p, size = %zu\n", h, (size_t) h->size);
@@ -894,7 +912,9 @@ printf("Started gc_sweep\n");
     h->newly_created = 0;
     sum_freed += heap_freed;
     heap_freed = 0;
+    next = h->next;
     pthread_mutex_unlock(&(h->lock));
+    h = next;
   }
 
 printf("Ending gc_sweep\n");
