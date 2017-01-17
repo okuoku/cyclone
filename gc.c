@@ -275,13 +275,38 @@ gc_heap *gc_heap_free(gc_heap *page, gc_heap *prev_page)
   fprintf(stderr, "DEBUG freeing heap type %d page at addr: %p\n", page->type, page);
 #endif
 
-  if (pthread_mutex_destroy(&(page->lock)) != 0) {
-    fprintf(stderr, "Error destroying mutex\n");
-    exit(1);
-  }
+ TODO:
+ tricky to do this correctly. maybe the best thing to do is set a flag
+ on the page to delete it later. change alloc to recognize the flag.
+ then the next time we sweep, do the actual deletion then.
+ that way we can be confident there are no race conditions, but
+ it is expensive to hold onto empty pages for so long. for large pages
+ this is probably OK. might not fly for smaller ones, but we stopped 
+ deleting those anyway, so...
 
-  prev_page->next = page->next;
-  free(page);
+but then is there still a race condition when we do the actual deletion?
+maybe need to:
+
+- lock page
+- check, is page really empty
+  - if so, flag page to be deleted, add to the "pending deletion" list
+- unlink page from heap
+- unlock it
+
+then after sweep can go back, acquire/release all pending deletion locks
+(to guarantee no other thread owns them) and delete them then (if no other
+thread had them locked, no thread can get to them since they were unlinked)
+
+alloc then has to skip pages that are flagged for deletion
+
+// TODO: migrate this code over
+//  if (pthread_mutex_destroy(&(page->lock)) != 0) {
+//    fprintf(stderr, "Error destroying mutex\n");
+//    exit(1);
+//  }
+//
+//  prev_page->next = page->next;
+//  free(page);
   return prev_page;
 }
 
