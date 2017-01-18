@@ -230,6 +230,7 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   //cached_heap_free_sizes[heap_type] += size;
   ck_pr_add_64(&(cached_heap_total_sizes[heap_type]), size);
   ck_pr_add_64(&(cached_heap_free_sizes[heap_type]), size);
+  pending_deletion = 0;
   h->chunk_size = chunk_size;
   h->max_size = max_size;
   h->data = (char *)gc_heap_align(sizeof(h->data) + (uintptr_t) & (h->data));
@@ -265,16 +266,27 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
  * @param   prev_page   Previous page in the heap
  * @return  Previous page if successful, NULL otherwise
  */
-//gc_heap *gc_heap_free(gc_heap *page, gc_heap *prev_page)
-//{
-//  // At least for now, do not free first page
-//  if (prev_page == NULL || page == NULL) {
-//    return page;
+gc_heap *gc_heap_free(gc_heap *page, gc_heap *prev_page)
+{
+  // At least for now, do not free first page
+  if (prev_page == NULL || page == NULL) {
+    return page;
+  }
+#if GC_DEBUG_TRACE
+  fprintf(stderr, "DEBUG freeing heap type %d page at addr: %p\n", page->type, page);
+#endif
+
+// TODO: migrate this code over
+//  if (pthread_mutex_destroy(&(page->lock)) != 0) {
+//    fprintf(stderr, "Error destroying mutex\n");
+//    exit(1);
 //  }
-//#if GC_DEBUG_TRACE
-//  fprintf(stderr, "DEBUG freeing heap type %d page at addr: %p\n", page->type, page);
-//#endif
 //
+//  prev_page->next = page->next;
+//  free(page);
+  return prev_page;
+}
+
 // TODO:
 // tricky to do this correctly. maybe the best thing to do is set a flag
 // on the page to delete it later. change alloc to recognize the flag.
@@ -298,26 +310,15 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 //thread had them locked, no thread can get to them since they were unlinked)
 //
 //alloc then has to skip pages that are flagged for deletion
-
-how to unlink page safely?
-- only one thread will be doing unlinking, so can safely get the prev/curr/next heap pointers
-- only lock one page at a time? is the runtime open to a deadlock if 2 are locked from same thread?
-- must lock prev page before unlinking "curr" pointer, since mutator threads use that pointer to traverse heap
-
-still thinking about only deleting from heap section after another heap is empty (but skipped).
-obviously always delete huge heaps
-
 //
-//// TODO: migrate this code over
-////  if (pthread_mutex_destroy(&(page->lock)) != 0) {
-////    fprintf(stderr, "Error destroying mutex\n");
-////    exit(1);
-////  }
-////
-////  prev_page->next = page->next;
-////  free(page);
-//  return prev_page;
-//}
+//how to unlink page safely?
+//- only one thread will be doing unlinking, so can safely get the prev/curr/next heap pointers
+//- only lock one page at a time? is the runtime open to a deadlock if 2 are locked from same thread?
+//- must lock prev page before unlinking "curr" pointer, since mutator threads use that pointer to traverse heap
+//
+//still thinking about only deleting from heap section after another heap is empty (but skipped).
+//obviously always delete huge heaps
+//
 
 int gc_is_heap_empty(gc_heap *h) 
 {
@@ -603,28 +604,31 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
     pthread_mutex_lock(&(h->lock));
     // TODO: chunk size (ignoring for now)
 
-    for (f1 = h->free_list, f2 = f1->next; f2; f1 = f2, f2 = f2->next) {        // all free in this heap
-      if (f2->size >= size) {   // Big enough for request
-        // TODO: take whole chunk or divide up f2 (using f3)?
-        if (f2->size >= (size + gc_heap_align(1) /* min obj size */ )) {
-          f3 = (gc_free_list *) (((char *)f2) + size);
-          f3->size = f2->size - size;
-          f3->next = f2->next;
-          f1->next = f3;
-        } else {                /* Take the whole chunk */
-          f1->next = f2->next;
-        }
+    // Do not allocate from a heap page that is about to be deleted
+    if (!h->pending_deletion) {
+      for (f1 = h->free_list, f2 = f1->next; f2; f1 = f2, f2 = f2->next) {        // all free in this heap
+        if (f2->size >= size) {   // Big enough for request
+          // TODO: take whole chunk or divide up f2 (using f3)?
+          if (f2->size >= (size + gc_heap_align(1) /* min obj size */ )) {
+            f3 = (gc_free_list *) (((char *)f2) + size);
+            f3->size = f2->size - size;
+            f3->next = f2->next;
+            f1->next = f3;
+          } else {                /* Take the whole chunk */
+            f1->next = f2->next;
+          }
 
-        if (heap_type != HEAP_HUGE) {
-          // Copy object into heap now to avoid any uninitialized memory issues
-          gc_copy_obj(f2, obj, thd);
-          ck_pr_sub_64(&(cached_heap_free_sizes[heap_type]), 
-                        gc_allocated_bytes(obj, NULL, NULL));
+          if (heap_type != HEAP_HUGE) {
+            // Copy object into heap now to avoid any uninitialized memory issues
+            gc_copy_obj(f2, obj, thd);
+            ck_pr_sub_64(&(cached_heap_free_sizes[heap_type]), 
+                          gc_allocated_bytes(obj, NULL, NULL));
+          }
+          ck_pr_store_ptr(&(h_passed->next_free), h);
+          ck_pr_store_uint(&(h_passed->last_alloc_size), size);
+          pthread_mutex_unlock(&(h->lock));
+          return f2;
         }
-        ck_pr_store_ptr(&(h_passed->next_free), h);
-        ck_pr_store_uint(&(h_passed->last_alloc_size), size);
-        pthread_mutex_unlock(&(h->lock));
-        return f2;
       }
     }
     next = h->next;
@@ -914,14 +918,15 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr)
     // Experimenting with only freeing huge heaps
 // TODO: a complication, cannot destroy a locked mutex.
 // can handle this case later if these more fine-grained locking changes are worth keeping
-//    if (h->type == HEAP_HUGE && gc_is_heap_empty(h) && !h->newly_created){
+    if (h->type == HEAP_HUGE && gc_is_heap_empty(h) && !h->newly_created){
 //        unsigned int h_size = h->size;
 //        h = gc_heap_free(h, prev_h);
 //        //cached_heap_free_sizes[heap_type] -= h_size;
 //        //cached_heap_total_sizes[heap_type] -= h_size;
 //        ck_pr_sub_64(&(cached_heap_free_sizes[heap_type] ), h_size);
 //        ck_pr_sub_64(&(cached_heap_total_sizes[heap_type]), h_size);
-//    }
+      h->pending_deletion = 1;
+    }
     h->newly_created = 0;
     sum_freed += heap_freed;
     heap_freed = 0;
@@ -941,6 +946,58 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr)
     *sum_freed_ptr = sum_freed;
   return max_freed;
 }
+
+void gc_heap_free_pending_deletions(gc_heap *h)
+{
+  // TODO: rewrite pseudocode below assuming new traversal algorithm below.
+  // need to ensure h->next is never held by another thread when this
+  // thread frees the memory for h->next.
+  //
+  // would be ideal if this could be done as part of gc_sweep instead of
+  // having a separate loop to free pages. but if we need this then that's
+  // ok
+  //
+  while h
+    lock h
+    next = h->next
+    if next
+      lock next
+      if deleting next 
+        queue next for deletion
+        h->next = next->next // unlinks page to delete
+        // at this point no other thread can have next
+        // because h is locked, and was locked first
+        unlock next
+        // sanity check to avoid race conditions, be
+        // absolutely positive that no other thread is 
+        // waiting for next
+        lock next
+        unlock next
+        destroy any resources from next (mutex, etc)
+        free next
+      else
+        unlock next
+      next = h->next
+    unlock h
+    h = next
+}
+
+fine-grain traversal algorithm, need to update all the code to use this.
+guarantees one prev/curr lock is always held, prevening case where
+a thread holds h->next but neither lock
+
+lock h
+while true
+  // process h
+
+  next = h->next
+  if next
+    lock next
+    unlock h
+    h = next
+  else
+    unlock h
+    break // done
 
 void gc_thr_grow_move_buffer(gc_thread_data * d)
 {
