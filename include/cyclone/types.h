@@ -193,7 +193,6 @@ struct gc_heap_t {
   unsigned int newly_created;
   //
   pthread_mutex_t lock; // Page-level lock
-  int pending_deletion; // Page marked for deletion, do not allocate from it
   //
   gc_heap *next_free;
   unsigned int last_alloc_size;
