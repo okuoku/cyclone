@@ -54,7 +54,7 @@
 #define DEBUG_SHOW_DIAG 0
 
 // Show diagnostic information before/after sweeping
-#define GC_DEBUG_SHOW_SWEEP_DIAG 0
+#define GC_DEBUG_SHOW_SWEEP_DIAG 1
 
 // GC debugging flags
 #define GC_DEBUG_TRACE 0
@@ -659,7 +659,7 @@ void gc_remove_mutator(gc_thread_data * thd);
 gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
                         size_t chunk_size);
 gc_heap *gc_heap_free(gc_heap *page);
-void gc_print_stats(gc_heap * h);
+void gc_print_stats(gc_heap * h, int heap_type);
 int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size);
 char *gc_copy_obj(object hp, char *obj, gc_thread_data * thd);
 void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
