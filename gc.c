@@ -957,35 +957,49 @@ void gc_heap_free_pending_deletions(gc_heap *h)
   // having a separate loop to free pages. but if we need this then that's
   // ok
   //
-  while h
-    lock h
+//  lock h
+//  while true
+//    next = h->next
+//    if next
+//      lock next
+//      if deleting next 
+//        queue next for deletion
+//        h->next = next->next // unlinks page to delete
+//        unlock next
+//      else
+//        unlock next
+//      next = h->next
+//    unlock h
+//    h = next
+
+// TODO: I think this could be the code directly in gc_sweep,
+// in which case the pending_deletion field could be removed
+  lock h
+  while true
     next = h->next
     if next
       lock next
       if deleting next 
         queue next for deletion
         h->next = next->next // unlinks page to delete
-        // at this point no other thread can have next
-        // because h is locked, and was locked first
-        unlock next
-        // sanity check to avoid race conditions, be
-        // absolutely positive that no other thread is 
-        // waiting for next
-        lock next
-        unlock next
-        destroy any resources from next (mutex, etc)
-        free next
-      else
-        unlock next
-      next = h->next
-    unlock h
-    h = next
+      unlock h
+      h = next
+    else
+      unlock h
+      break // done
+
+  // At this point all pending deletions have been unlinked
+  for each next in queue // could be old heap-style for loop
+    destroy resources (mutex, etc)
+    free next
 }
 
 fine-grain traversal algorithm, need to update all the code to use this.
-guarantees one prev/curr lock is always held, prevening case where
-a thread holds h->next but neither lock
+think just 3 places?
+Anyway, this guarantees one prev/curr lock is always held, preventing case 
+where a thread holds h->next but neither lock
 
+// may need to check if (h) here...
 lock h
 while true
   // process h
