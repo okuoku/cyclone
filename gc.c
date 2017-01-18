@@ -298,6 +298,15 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 //thread had them locked, no thread can get to them since they were unlinked)
 //
 //alloc then has to skip pages that are flagged for deletion
+
+how to unlink page safely?
+- only one thread will be doing unlinking, so can safely get the prev/curr/next heap pointers
+- only lock one page at a time? is the runtime open to a deadlock if 2 are locked from same thread?
+- must lock prev page before unlinking "curr" pointer, since mutator threads use that pointer to traverse heap
+
+still thinking about only deleting from heap section after another heap is empty (but skipped).
+obviously always delete huge heaps
+
 //
 //// TODO: migrate this code over
 ////  if (pthread_mutex_destroy(&(page->lock)) != 0) {
