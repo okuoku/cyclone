@@ -605,7 +605,7 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
 //    h = (gc_heap *)ck_pr_load_ptr(&(h->next_free));
 //  }
 
-// TODO: need this back, but it is not synchronized properly
+ TODO: need this back, but it is not synchronized properly
 //  pthread_mutex_lock(&(h->lock));
 //  if (size >= h->last_alloc_size && h->next_free) {
 //    next = h->next_free;
