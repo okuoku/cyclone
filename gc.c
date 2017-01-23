@@ -582,10 +582,10 @@ int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size)
     if (new_size < size && size < HEAP_SIZE) {
       new_size = HEAP_SIZE;
     }
-//#if GC_DEBUG_TRACE
+#if GC_DEBUG_TRACE
     fprintf(stderr, "Growing heap %d new page size = %zu\n", heap_type,
             new_size);
-//#endif
+#endif
   }
   // Done with computing new page size
   h_new = gc_heap_create(heap_type, new_size, h_last->max_size, chunk_size);
@@ -990,7 +990,9 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr)
       //if (next->type == HEAP_HUGE && gc_is_heap_empty(next) /*&& !next->newly_created*/){
       if (gc_is_heap_empty(next) && 
           (next->type == HEAP_HUGE || !(next->ttl--))){
+#if GC_DEBUG_TRACE
         fprintf(stderr, "unlinked free heap page %p\n", next);
+#endif
         // unlink next
         h->next = next->next;
 
@@ -1020,7 +1022,9 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr)
   while (h2free) {
    unsigned int h_size = h2free->size;
    gc_heap *n = h2free->next;
+#if GC_DEBUG_TRACE
    fprintf(stderr, "Performing actual free of %p of size %d\n", h2free, h_size);
+#endif
    gc_heap_free(h2free);
    ck_pr_sub_64(&(cached_heap_free_sizes[heap_type] ), h_size);
    ck_pr_sub_64(&(cached_heap_total_sizes[heap_type]), h_size);
