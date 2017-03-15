@@ -959,6 +959,7 @@
       " gc_thread_data *thd = (gc_thread_data *)data;
         make_pair(c, obj, thd->param_objs);
         thd->param_objs = &c;
+        fprintf(stderr, \"New param obj car = %p\\n\", obj);
         return_closcall1(data, k, &c); ")
       ;"(void *data, int argc, closure _, object k, object obj)"
       ;" make_pair(p, obj, ((gc_thread_data *)data)->param_objs);

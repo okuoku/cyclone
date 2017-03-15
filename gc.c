@@ -50,6 +50,7 @@ static int gc_color_clear = 3;  // White, is swapped during GC
 static int gc_status_col = STATUS_SYNC1;
 static int gc_stage = STAGE_RESTING;
 
+object jae_param_objs = NULL;
 // Does not need sync, only used by collector thread
 static void **mark_stack = NULL;
 static int mark_stack_len = 0;
@@ -1419,13 +1420,13 @@ void gc_mark_gray2(gc_thread_data * thd, object obj)
  * they should never be added to the mark stack. Which would be bad because it
  * could lead to stack corruption.
  */
-#if GC_DEBUG_VERBOSE
+#if 1
 static void gc_collector_mark_gray(object parent, object obj)
 {
   if (is_object_type(obj) && mark(obj) == gc_color_clear) {
     mark_stack = vpbuffer_add(mark_stack, &mark_stack_len, mark_stack_i++, obj);
-    fprintf(stderr, "mark gray parent = %p (%d) obj = %p\n", parent,
-            type_of(parent), obj);
+    //fprintf(stderr, "mark gray parent = %p (%d) obj = %p\n", parent,
+    //        type_of(parent), obj);
   }
 }
 #else
@@ -1438,7 +1439,7 @@ static void gc_collector_mark_gray(object parent, object obj)
   }
 #endif
 
-#if GC_DEBUG_VERBOSE
+#if 1
 void gc_mark_black(object obj)
 {
   // TODO: is sync required to get colors? probably not on the collector
@@ -1487,11 +1488,11 @@ void gc_mark_black(object obj)
       // Only blacken objects on the heap
       mark(obj) = markColor;
     }
-    if (mark(obj) != gc_color_red) {
-      fprintf(stderr, "marked %p %d\n", obj, markColor);
-    } else {
-      fprintf(stderr, "not marking stack obj %p %d\n", obj, markColor);
-    }
+    //if (mark(obj) != gc_color_red) {
+    //  fprintf(stderr, "marked %p %d\n", obj, markColor);
+    //} else {
+    //  fprintf(stderr, "not marking stack obj %p %d\n", obj, markColor);
+    //}
   }
 }
 #else
@@ -1560,6 +1561,13 @@ void gc_collector_trace()
 // TODO: ideally, want to use a lock-free data structure to prevent
 // having to use a mutex here. see corresponding code in gc_mark_gray
       pthread_mutex_lock(&(m->lock));
+
+fprintf(stderr, "TRACE param obj car = %p\n", car(m->param_objs));
+//jae_param_objs = m->param_objs;
+//if (jae_param_objs) {
+//  jae_param_objs = car(jae_param_objs);
+//}
+
       while (m->last_read < m->last_write) {
         clean = 0;
 #if GC_DEBUG_VERBOSE
