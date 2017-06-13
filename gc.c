@@ -635,25 +635,37 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, size_t orig_size, ch
           if (type_of(obj) == closureN_tag) {
             int i;
             closureN_type *hp = f2;
-            mark(hp) = thd->gc_alloc_color;
-            type_of(hp) = closureN_tag;
-            hp->fn = ((closureN) obj)->fn;
-            hp->num_args = ((closureN) obj)->num_args;
-            hp->num_elements = ((closureN) obj)->num_elements;
+            //mark(hp) = thd->gc_alloc_color;
+            //type_of(hp) = closureN_tag;
+            //hp->fn = ((closureN) obj)->fn;
+            //hp->num_args = ((closureN) obj)->num_args;
+            //hp->num_elements = ((closureN) obj)->num_elements;
+            //hp->elements = (object *) (((char *)hp) + sizeof(closureN_type));
+            //for (i = 0; i < hp->num_elements; i++) {
+            //  hp->elements[i] = ((closureN) obj)->elements[i];
+            //}
+            memcpy(f2, obj, sizeof(closureN_type));
             hp->elements = (object *) (((char *)hp) + sizeof(closureN_type));
-            for (i = 0; i < hp->num_elements; i++) {
-              hp->elements[i] = ((closureN) obj)->elements[i];
-            }
+            memcpy(hp->elements, ((closureN) obj)->elements, orig_size - sizeof(closureN_type));
+            mark(f2) = thd->gc_alloc_color;
           } else if (type_of(obj) == string_tag) {
             char *s;
             string_type *hp = f2;
-            mark(hp) = thd->gc_alloc_color;
             s = ((char *)hp) + sizeof(string_type);
+            memcpy(f2, obj, sizeof(string_type));
             memcpy(s, string_str(obj), string_len(obj) + 1);
             mark(hp) = thd->gc_alloc_color;
-            type_of(hp) = string_tag;
-            string_len(hp) = string_len(obj);
             string_str(hp) = s;
+
+            //char *s;
+            //string_type *hp = f2;
+            //mark(hp) = thd->gc_alloc_color;
+            //s = ((char *)hp) + sizeof(string_type);
+            //memcpy(s, string_str(obj), string_len(obj) + 1);
+            //mark(hp) = thd->gc_alloc_color;
+            //type_of(hp) = string_tag;
+            //string_len(hp) = string_len(obj);
+            //string_str(hp) = s;
           } else if (type_of(obj) == bytevector_tag) {
             bytevector_type *hp = f2;
             mark(hp) = thd->gc_alloc_color;
