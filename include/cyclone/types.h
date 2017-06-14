@@ -314,7 +314,7 @@ void gc_merge_all_heaps(gc_thread_data *dest, gc_thread_data *src);
 void gc_print_stats(gc_heap * h);
 int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size, gc_thread_data *thd);
 char *gc_copy_obj(object hp, char *obj, gc_thread_data * thd);
-void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
+void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, size_t orig_size, char *obj,
                    gc_thread_data * thd);
 void *gc_alloc(gc_heap_root * h, size_t size, char *obj, gc_thread_data * thd,
                int *heap_grown);

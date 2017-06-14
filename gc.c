@@ -601,7 +601,7 @@ int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size, gc_
  * This function will fail if there is no space on the heap for the 
  * requested object.
  */
-void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
+void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, size_t orig_size, char *obj,
                    gc_thread_data * thd)
 {
   gc_heap *h_passed = h;
@@ -631,7 +631,51 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
 
         if (heap_type != HEAP_HUGE) {
           // Copy object into heap now to avoid any uninitialized memory issues
-          gc_copy_obj(f2, obj, thd);
+          //gc_copy_obj(f2, obj, thd);
+          if (type_of(obj) == closureN_tag) {
+            int i;
+            closureN_type *hp = f2;
+            mark(hp) = thd->gc_alloc_color;
+            type_of(hp) = closureN_tag;
+            hp->fn = ((closureN) obj)->fn;
+            hp->num_args = ((closureN) obj)->num_args;
+            hp->num_elements = ((closureN) obj)->num_elements;
+            hp->elements = (object *) (((char *)hp) + sizeof(closureN_type));
+            for (i = 0; i < hp->num_elements; i++) {
+              hp->elements[i] = ((closureN) obj)->elements[i];
+            }
+          } else if (type_of(obj) == string_tag) {
+            char *s;
+            string_type *hp = f2;
+            mark(hp) = thd->gc_alloc_color;
+            s = ((char *)hp) + sizeof(string_type);
+            memcpy(s, string_str(obj), string_len(obj) + 1);
+            mark(hp) = thd->gc_alloc_color;
+            type_of(hp) = string_tag;
+            string_len(hp) = string_len(obj);
+            string_str(hp) = s;
+          } else if (type_of(obj) == bytevector_tag) {
+            bytevector_type *hp = f2;
+            mark(hp) = thd->gc_alloc_color;
+            type_of(hp) = bytevector_tag;
+            hp->len = ((bytevector) obj)->len;
+            hp->data = (((char *)hp) + sizeof(bytevector_type));
+            memcpy(hp->data, ((bytevector) obj)->data, hp->len);
+          } else if (type_of(obj) == vector_tag) {
+            int i;
+            vector_type *hp = f2;
+            mark(hp) = thd->gc_alloc_color;
+            type_of(hp) = vector_tag;
+            hp->num_elements = ((vector) obj)->num_elements;
+            hp->elements = (object *) (((char *)hp) + sizeof(vector_type));
+            for (i = 0; i < hp->num_elements; i++) {
+              hp->elements[i] = ((vector) obj)->elements[i];
+            }
+          } else {
+            memcpy(f2, obj, orig_size);
+            mark(f2) = thd->gc_alloc_color;
+          }
+
           //h->free_size -= gc_allocated_bytes(obj, NULL, NULL);
           ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
         } else {
@@ -702,6 +746,7 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
   void *result = NULL;
   gc_heap *h = NULL;
   int heap_type;
+  size_t orig_size = size;
   // TODO: check return value, if null (could not alloc) then 
   // run a collection and check how much free space there is. if less
   // the allowed ratio, try growing heap.
@@ -727,14 +772,14 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
   allocated_heap_counts[heap_type]++;
 #endif
 
-  result = gc_try_alloc(h, heap_type, size, obj, thd);
+  result = gc_try_alloc(h, heap_type, size, orig_size, obj, thd);
   if (!result) {
     // A vanilla mark&sweep collector would collect now, but unfortunately
     // we can't do that because we have to go through multiple stages, some
     // of which are asynchronous. So... no choice but to grow the heap.
     gc_grow_heap(h, heap_type, size, 0, thd);
     *heap_grown = 1;
-    result = gc_try_alloc(h, heap_type, size, obj, thd);
+    result = gc_try_alloc(h, heap_type, size, orig_size, obj, thd);
     if (!result) {
       fprintf(stderr, "out of memory error allocating %zu bytes\n", size);
       fprintf(stderr, "Heap type %d diagnostics:\n", heap_type);
