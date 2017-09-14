@@ -36,6 +36,13 @@
 #define gc_align(n, bits) (((n)+(1<<(bits))-1)&(((uintptr_t)-1)-((1<<(bits))-1)))
 // 64-bit is 3, 32-bit is 2
 //#define gc_word_align(n) gc_align((n), 2)
+
+TODO: try setting this to 3, for 8-byte alignment instead of 32. 
+requires (probably) using the _rest heap model, removing the heaps that are multiples of 32 (so 
+need to go through this code for any "32" references, changing gc init code to match, and probably
+general cleanup. want to compare and see how much better (if any) performance is with this change.
+It has the potential to make memory usage much more efficient (especially for pairs) but can that
+translate to an overall performance boost??
 #define gc_heap_align(n) gc_align(n, 5)
 
 #if INTPTR_MAX == INT64_MAX
