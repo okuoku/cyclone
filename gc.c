@@ -37,18 +37,19 @@
 // 64-bit is 3, 32-bit is 2
 //#define gc_word_align(n) gc_align((n), 2)
 
-TODO: try setting this to 3, for 8-byte alignment instead of 32. 
-requires (probably) using the _rest heap model, removing the heaps that are multiples of 32 (so 
-need to go through this code for any "32" references, changing gc init code to match, and probably
-general cleanup. want to compare and see how much better (if any) performance is with this change.
-It has the potential to make memory usage much more efficient (especially for pairs) but can that
-translate to an overall performance boost??
-#define gc_heap_align(n) gc_align(n, 5)
+/// TODO: try setting this to 3, for 8-byte alignment instead of 32. 
+/// requires (probably) using the _rest heap model, removing the heaps that are multiples of 32 (so 
+/// need to go through this code for any "32" references, changing gc init code to match, and probably
+/// general cleanup. want to compare and see how much better (if any) performance is with this change.
+/// It has the potential to make memory usage much more efficient (especially for pairs) but can that
+/// translate to an overall performance boost??
+#define gc_heap_align(n) gc_align(n, 3)
+#define GC_HEAP_BLOCK_SIZE (1<<3)
 
 #if INTPTR_MAX == INT64_MAX
-  #define REST_HEAP_MIN_SIZE 128
+  #define REST_HEAP_MIN_SIZE 16
 #else
-  #define REST_HEAP_MIN_SIZE 96
+  #define REST_HEAP_MIN_SIZE 16 // TODO: probably is lower than this, maybe 8
 #endif
 
 ////////////////////
@@ -120,7 +121,7 @@ void print_allocated_obj_counts()
   fprintf(stderr, "Allocated sizes:\n");
   fprintf(stderr, "Size, Allocations\n");
   for (i = 0; i < NUM_ALLOC_SIZES; i++){
-    fprintf(stderr, "%d, %lf\n", 32 + (i*32), allocated_size_counts[i]);
+    fprintf(stderr, "%d, %lf\n", 16 + (i*8), allocated_size_counts[i]);
   }
   fprintf(stderr, "Allocated objects:\n");
   fprintf(stderr, "Tag, Allocations\n");
@@ -317,13 +318,11 @@ void gc_heap_create_rest(gc_heap *h, gc_thread_data *thd) {
   int i;
   gc_heap *h_last = h;
   size_t chunk_size = REST_HEAP_MIN_SIZE;
-  h->next_frees = malloc(sizeof(gc_heap *) * 3);
-  for (i = 0; i < 3; i++){
-    // TODO: just create heaps here instead?
-    // TODO: don't forget to set chunk_size on them
+  h->next_frees = malloc(sizeof(gc_heap *) * 10);
+  for (i = 0; i < 10; i++){
     h->next_frees[i] = gc_heap_create(HEAP_REST, h->size, h->max_size, chunk_size, thd);
     h_last = h_last->next = h->next_frees[i];
-    chunk_size += 32;
+    chunk_size += GC_HEAP_BLOCK_SIZE;
   }
 }
 
@@ -737,8 +736,8 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
         if (heap_type != HEAP_HUGE) {
           // Copy object into heap now to avoid any uninitialized memory issues
           #if GC_DEBUG_TRACE
-          if (size < (32 * NUM_ALLOC_SIZES)) {
-            allocated_size_counts[(size / 32) - 1]++;
+          if (size < (8 * NUM_ALLOC_SIZES)) {
+            allocated_size_counts[(size / GC_HEAP_BLOCK_SIZE) - 1]++;
           }
           #endif
           gc_copy_obj(f2, obj, thd);
@@ -771,7 +770,7 @@ void *gc_try_alloc_rest(gc_heap * h, int heap_type, size_t size, size_t chunk_si
   // block in which case there may be available memory closer to
   // the start of the heap.
   if (chunk_size) {
-    free_list_i = (size - REST_HEAP_MIN_SIZE) / 32;
+    free_list_i = (size - REST_HEAP_MIN_SIZE) / GC_HEAP_BLOCK_SIZE;
     h = h->next_frees[free_list_i];
   }
   for (; h ; h = h->next) {      // All heaps
@@ -793,8 +792,8 @@ void *gc_try_alloc_rest(gc_heap * h, int heap_type, size_t size, size_t chunk_si
 
           // Copy object into heap now to avoid any uninitialized memory issues
           #if GC_DEBUG_TRACE
-          if (size < (32 * NUM_ALLOC_SIZES)) {
-            allocated_size_counts[(size / 32) - 1]++;
+          if (size < (GC_HEAP_BLOCK_SIZE * NUM_ALLOC_SIZES)) {
+            allocated_size_counts[(size / GC_HEAP_BLOCK_SIZE) - 1]++;
           }
           #endif
           gc_copy_obj(f2, obj, thd);
@@ -871,22 +870,23 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
   // the allowed ratio, try growing heap.
   // then try realloc. if cannot alloc now, then throw out of memory error
   size = gc_heap_align(size);
-  if (size <= 32) {
-    heap_type = HEAP_SM;
-  } else if (size <= 64) {
-    heap_type = HEAP_64;
-// Only use this heap on 64-bit platforms, where larger objs are used more often
-// Code from http://stackoverflow.com/a/32717129/101258
-#if INTPTR_MAX == INT64_MAX
-  } else if (size <= 96) {
-    heap_type = HEAP_96;
-#endif
-  } else if (size >= MAX_STACK_OBJ) {
+//  if (size <= 32) {
+//    heap_type = HEAP_SM;
+//  } else if (size <= 64) {
+//    heap_type = HEAP_64;
+//// Only use this heap on 64-bit platforms, where larger objs are used more often
+//// Code from http://stackoverflow.com/a/32717129/101258
+//#if INTPTR_MAX == INT64_MAX
+//  } else if (size <= 96) {
+//    heap_type = HEAP_96;
+//#endif
+//  } else if (size >= MAX_STACK_OBJ) {
+  if (size >= MAX_STACK_OBJ) {
     heap_type = HEAP_HUGE;
   } else {
     heap_type = HEAP_REST;
     // Special case, at least for now
-    //return gc_alloc_rest(hrt, size, obj, thd, heap_grown);
+    return gc_alloc_rest(hrt, size, obj, thd, heap_grown);
   }
   h = hrt->heap[heap_type];
 #if GC_DEBUG_TRACE
@@ -932,7 +932,7 @@ void *gc_alloc_rest(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data *
   allocated_heap_counts[HEAP_REST]++;
 #endif
 
-  if (size < (REST_HEAP_MIN_SIZE + 32 * 3)) {
+  if (size < (REST_HEAP_MIN_SIZE + GC_HEAP_BLOCK_SIZE * 10)) {
     chunk_size = size;
   }
 
@@ -1086,35 +1086,35 @@ void gc_collector_sweep()
     }
 
     // TODO: this loop only includes smallest 2 heaps, is that sufficient??
-    for (heap_type = 0; heap_type < 2; heap_type++) {
-      while ( ck_pr_load_ptr(&(m->cached_heap_free_sizes[heap_type])) <
-             (ck_pr_load_ptr(&(m->cached_heap_total_sizes[heap_type])) * GC_FREE_THRESHOLD)) {
-#if GC_DEBUG_TRACE
-        fprintf(stderr, "Less than %f%% of the heap %d is free, growing it\n",
-                100.0 * GC_FREE_THRESHOLD, heap_type);
-#endif
-        if (heap_type == HEAP_SM) {
-          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
-        } else if (heap_type == HEAP_64) {
-          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
-        } else if (heap_type == HEAP_REST) {
-          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
-        }
-      }
-    }
+//    for (heap_type = 0; heap_type < 2; heap_type++) {
+//      while ( ck_pr_load_ptr(&(m->cached_heap_free_sizes[heap_type])) <
+//             (ck_pr_load_ptr(&(m->cached_heap_total_sizes[heap_type])) * GC_FREE_THRESHOLD)) {
+//#if GC_DEBUG_TRACE
+//        fprintf(stderr, "Less than %f%% of the heap %d is free, growing it\n",
+//                100.0 * GC_FREE_THRESHOLD, heap_type);
+//#endif
+//        if (heap_type == HEAP_SM) {
+//          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
+//        } else if (heap_type == HEAP_64) {
+//          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
+//        } else if (heap_type == HEAP_REST) {
+//          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
+//        }
+//      }
+//    }
     // Clear allocation counts to delay next GC trigger
     ck_pr_store_int(&(m->heap_num_huge_allocations), 0); 
 #if GC_DEBUG_TRACE
-    total_size = ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_SM])) +
-                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_64])) + 
+    total_size = //ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_SM])) +
+                 //ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_64])) + 
 #if INTPTR_MAX == INT64_MAX
-                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_96])) + 
+                 //ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_96])) + 
 #endif
                  ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_REST]));
-    total_free = ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_SM])) +
-                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_64])) + 
+    total_free = //ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_SM])) +
+                 //ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_64])) + 
 #if INTPTR_MAX == INT64_MAX
-                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_96])) + 
+                 //ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_96])) + 
 #endif
                  ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_REST]));
     fprintf(stderr,
@@ -1159,14 +1159,14 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
   h->next_free = h;
   h->last_alloc_size = 0;
 
-  //if (heap_type == HEAP_REST) {
-  //  int i;
-  //  size_t chunk_size = REST_HEAP_MIN_SIZE;
-  //  for (i = 0; i < 3; i++) {
-  //    h->next_frees[i] = gc_find_heap_with_chunk_size(h, chunk_size);
-  //    chunk_size += 32;
-  //  }
-  //}
+  if (heap_type == HEAP_REST) {
+    int i;
+    size_t chunk_size = REST_HEAP_MIN_SIZE;
+    for (i = 0; i < 10; i++) {
+      h->next_frees[i] = gc_find_heap_with_chunk_size(h, chunk_size);
+      chunk_size += GC_HEAP_BLOCK_SIZE;
+    }
+  }
 
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   fprintf(stderr, "\nBefore sweep -------------------------\n");
@@ -1551,13 +1551,13 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
   // Threshold is intentially low because we have to go through an
   // entire handshake/trace/sweep cycle, ideally without growing heap.
   if (ck_pr_load_int(&gc_stage) == STAGE_RESTING &&
-      ((ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_SM])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_SM])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_64])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_64])) * GC_COLLECTION_THRESHOLD) ||
+      (//(ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_SM])) <
+       // ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_SM])) * GC_COLLECTION_THRESHOLD) ||
+       //(ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_64])) <
+       // ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_64])) * GC_COLLECTION_THRESHOLD) ||
 #if INTPTR_MAX == INT64_MAX
-       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_96])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_96])) * GC_COLLECTION_THRESHOLD) ||
+       //(ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_96])) <
+       // ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_96])) * GC_COLLECTION_THRESHOLD) ||
 #endif
        (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_REST])) <
         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_REST])) * GC_COLLECTION_THRESHOLD) ||
@@ -2161,12 +2161,12 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
   thd->heap = calloc(1, sizeof(gc_heap_root));
   thd->heap->heap = calloc(1, sizeof(gc_heap *) * NUM_HEAP_TYPES);
   thd->heap->heap[HEAP_REST] = gc_heap_create(HEAP_REST, INITIAL_HEAP_SIZE, 0, 0, thd);
-  //gc_heap_create_rest(thd->heap->heap[HEAP_REST], thd); // REST-specific init
-  thd->heap->heap[HEAP_SM] = gc_heap_create(HEAP_SM, INITIAL_HEAP_SIZE, 0, 0, thd);
-  thd->heap->heap[HEAP_64] = gc_heap_create(HEAP_64, INITIAL_HEAP_SIZE, 0, 0, thd);
-  if (sizeof(void *) == 8) { // Only use this heap on 64-bit platforms
-    thd->heap->heap[HEAP_96] = gc_heap_create(HEAP_96, INITIAL_HEAP_SIZE, 0, 0, thd);
-  }
+  gc_heap_create_rest(thd->heap->heap[HEAP_REST], thd); // REST-specific init
+  thd->heap->heap[HEAP_SM] = NULL; //gc_heap_create(HEAP_SM, INITIAL_HEAP_SIZE, 0, 0, thd);
+  thd->heap->heap[HEAP_64] = NULL; //gc_heap_create(HEAP_64, INITIAL_HEAP_SIZE, 0, 0, thd);
+  //if (sizeof(void *) == 8) { // Only use this heap on 64-bit platforms
+    thd->heap->heap[HEAP_96] = NULL; //gc_heap_create(HEAP_96, INITIAL_HEAP_SIZE, 0, 0, thd);
+  //}
   thd->heap->heap[HEAP_HUGE] = gc_heap_create(HEAP_HUGE, 1024, 0, 0, thd);
 }
 
