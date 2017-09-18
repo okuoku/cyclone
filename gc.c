@@ -114,7 +114,7 @@ void print_allocated_obj_counts()
   fprintf(stderr, "Allocated sizes:\n");
   fprintf(stderr, "Size, Allocations\n");
   for (i = 0; i < NUM_ALLOC_SIZES; i++){
-    fprintf(stderr, "%d, %lf\n", 32 + (i*32), allocated_size_counts[i]);
+    fprintf(stderr, "%d, %lf\n", 16 + (i*GC_HEAP_BLOCK_SIZE), allocated_size_counts[i]);
   }
   fprintf(stderr, "Allocated objects:\n");
   fprintf(stderr, "Tag, Allocations\n");
@@ -731,8 +731,8 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
         if (heap_type != HEAP_HUGE) {
           // Copy object into heap now to avoid any uninitialized memory issues
           #if GC_DEBUG_TRACE
-          if (size < (32 * NUM_ALLOC_SIZES)) {
-            allocated_size_counts[(size / 32) - 1]++;
+          if (size < (GC_HEAP_BLOCK_SIZE * NUM_ALLOC_SIZES)) {
+            allocated_size_counts[(size / GC_HEAP_BLOCK_SIZE) - 1]++;
           }
           #endif
           gc_copy_obj(f2, obj, thd);
@@ -872,23 +872,32 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
          else rest
       heap_index = size >> 3
    */
-  if (size <= 32) {
-    heap_type = HEAP_SM;
-  } else if (size <= 64) {
-    heap_type = HEAP_64;
-// Only use this heap on 64-bit platforms, where larger objs are used more often
-// Code from http://stackoverflow.com/a/32717129/101258
-#if INTPTR_MAX == INT64_MAX
-  } else if (size <= 96) {
-    heap_type = HEAP_96;
-#endif
-  } else if (size >= MAX_STACK_OBJ) {
-    heap_type = HEAP_HUGE;
-  } else {
-    heap_type = HEAP_REST;
-    // Special case, at least for now
-    //return gc_alloc_rest(hrt, size, obj, thd, heap_grown);
-  }
+   if (size > 128) {
+     if (size >= MAX_STACK_OBJ) {
+       heap_type = HEAP_HUGE;
+     } else {
+       heap_type = HEAP_REST;
+     }
+   } else {
+     heap_type = size >> 3;
+   }
+//  if (size <= 32) {
+//    heap_type = HEAP_SM;
+//  } else if (size <= 64) {
+//    heap_type = HEAP_64;
+//// Only use this heap on 64-bit platforms, where larger objs are used more often
+//// Code from http://stackoverflow.com/a/32717129/101258
+//#if INTPTR_MAX == INT64_MAX
+//  } else if (size <= 96) {
+//    heap_type = HEAP_96;
+//#endif
+//  } else if (size >= MAX_STACK_OBJ) {
+//    heap_type = HEAP_HUGE;
+//  } else {
+//    heap_type = HEAP_REST;
+//    // Special case, at least for now
+//    //return gc_alloc_rest(hrt, size, obj, thd, heap_grown);
+//  }
   h = hrt->heap[heap_type];
 #if GC_DEBUG_TRACE
   allocated_heap_counts[heap_type]++;
@@ -1087,7 +1096,7 @@ void gc_collector_sweep()
     }
 
     // TODO: this loop only includes smallest 2 heaps, is that sufficient??
-    for (heap_type = HEAP_16; heap_type < HEAP_128; heap_type++) {
+    for (heap_type = HEAP_16; heap_type <= HEAP_128; heap_type++) {
       while ( ck_pr_load_ptr(&(m->cached_heap_free_sizes[heap_type])) <
              (ck_pr_load_ptr(&(m->cached_heap_total_sizes[heap_type])) * GC_FREE_THRESHOLD)) {
 #if GC_DEBUG_TRACE
@@ -1105,24 +1114,24 @@ void gc_collector_sweep()
     }
     // Clear allocation counts to delay next GC trigger
     ck_pr_store_int(&(m->heap_num_huge_allocations), 0); 
-#if GC_DEBUG_TRACE
-    total_size = ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_SM])) +
-                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_64])) + 
-#if INTPTR_MAX == INT64_MAX
-                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_96])) + 
-#endif
-                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_REST]));
-    total_free = ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_SM])) +
-                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_64])) + 
-#if INTPTR_MAX == INT64_MAX
-                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_96])) + 
-#endif
-                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_REST]));
-    fprintf(stderr,
-            "sweep done, total_size = %zu, total_free = %zu, freed = %zu, elapsed = %ld\n",
-            total_size, total_free, freed,
-            (time(NULL) - gc_collector_start));
-#endif
+//#if GC_DEBUG_TRACE
+//    total_size = ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_SM])) +
+//                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_64])) + 
+//#if INTPTR_MAX == INT64_MAX
+//                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_96])) + 
+//#endif
+//                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_REST]));
+//    total_free = ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_SM])) +
+//                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_64])) + 
+//#if INTPTR_MAX == INT64_MAX
+//                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_96])) + 
+//#endif
+//                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_REST]));
+//    fprintf(stderr,
+//            "sweep done, total_size = %zu, total_free = %zu, freed = %zu, elapsed = %ld\n",
+//            total_size, total_free, freed,
+//            (time(NULL) - gc_collector_start));
+//#endif
   }
 #if GC_DEBUG_TRACE
   fprintf(stderr, "all thread heap sweeps done\n");
@@ -1552,16 +1561,49 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
   // Threshold is intentially low because we have to go through an
   // entire handshake/trace/sweep cycle, ideally without growing heap.
   if (ck_pr_load_int(&gc_stage) == STAGE_RESTING &&
-      ((ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_SM])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_SM])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_64])) <
+      (
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_16])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_16])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_24])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_24])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_32])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_32])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_40])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_40])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_48])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_48])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_56])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_56])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_64])) <
         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_64])) * GC_COLLECTION_THRESHOLD) ||
-#if INTPTR_MAX == INT64_MAX
-       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_96])) <
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_72])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_72])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_80])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_80])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_88])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_88])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_96])) <
         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_96])) * GC_COLLECTION_THRESHOLD) ||
-#endif
-       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_REST])) <
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_104])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_104])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_112])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_112])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_120])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_120])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_128])) <
+        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_128])) * GC_COLLECTION_THRESHOLD) ||
+       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_REST])) <
         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_REST])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_SM])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_SM])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_64])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_64])) * GC_COLLECTION_THRESHOLD) ||
+//#if INTPTR_MAX == INT64_MAX
+//       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_96])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_96])) * GC_COLLECTION_THRESHOLD) ||
+//#endif
+//       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_REST])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_REST])) * GC_COLLECTION_THRESHOLD) ||
        // Separate huge heap threshold since these are typically allocated as whole pages
        (ck_pr_load_int(&(thd->heap_num_huge_allocations)) > 100)
         )) {
@@ -2158,8 +2200,8 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
     fprintf(stderr, "Unable to initialize thread mutex\n");
     exit(1);
   }
-  thd->cached_heap_free_sizes = calloc(5, sizeof(uintptr_t));
-  thd->cached_heap_total_sizes = calloc(5, sizeof(uintptr_t));
+  thd->cached_heap_free_sizes = calloc(NUM_HEAP_TYPES + 1, sizeof(uintptr_t));
+  thd->cached_heap_total_sizes = calloc(NUM_HEAP_TYPES + 1, sizeof(uintptr_t));
   thd->heap = calloc(1, sizeof(gc_heap_root));
   thd->heap->heap = calloc(1, sizeof(gc_heap *) * NUM_HEAP_TYPES);
   thd->heap->heap[HEAP_REST] = gc_heap_create(HEAP_REST, INITIAL_HEAP_SIZE, 0, 0, thd);
