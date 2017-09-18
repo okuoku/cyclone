@@ -106,7 +106,7 @@ static double allocated_obj_counts[25] = {
   0,0,0,0,0,
   0,0,0,0,0};
 // TODO: allocated object sizes (EG: 32, 64, etc).
-static double allocated_heap_counts[4] = {0, 0, 0, 0};
+static double allocated_heap_counts[NUM_HEAP_TYPES] = {0};
 
 void print_allocated_obj_counts()
 {
@@ -123,7 +123,7 @@ void print_allocated_obj_counts()
   }
   fprintf(stderr, "Allocated heaps:\n");
   fprintf(stderr, "Heap, Allocations\n");
-  for (i = 0; i < 4; i++){
+  for (i = 0; i < NUM_HEAP_TYPES; i++){
     fprintf(stderr, "%d, %lf\n", i, allocated_heap_counts[i]);
   }
 }
@@ -865,6 +865,13 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
   // the allowed ratio, try growing heap.
   // then try realloc. if cannot alloc now, then throw out of memory error
   size = gc_heap_align(size);
+  /* TODO:
+   if size > 128 (?)
+      if size > MAX
+         then huge
+         else rest
+      heap_index = size >> 3
+   */
   if (size <= 32) {
     heap_type = HEAP_SM;
   } else if (size <= 64) {
