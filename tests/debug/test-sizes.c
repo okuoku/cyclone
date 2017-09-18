@@ -11,7 +11,7 @@
 #define gc_align(n, bits) (((n)+(1<<(bits))-1)&(((uintptr_t)-1)-((1<<(bits))-1)))
 // 64-bit is 3, 32-bit is 2
 //#define gc_word_align(n) gc_align((n), 2)
-#define gc_heap_align(n) gc_align(n, 5)
+#define gc_heap_align(n) gc_align(n, 3)
 
 void print_stats(const char *type, size_t sz, size_t heap_sz)
 {

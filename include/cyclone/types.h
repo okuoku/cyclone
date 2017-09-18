@@ -161,15 +161,27 @@ typedef unsigned char tag_type;
  functions would no longer work (EG: strlen, etc).
  */
 typedef enum { 
-    HEAP_SM = 0  // 32 byte objects (min gc_heap_align)
-  , HEAP_64
-  , HEAP_96
+    HEAP_HUGE=0  // Huge objects, 1 per page
   , HEAP_REST    // Everything else
-  , HEAP_HUGE    // Huge objects, 1 per page
+  , HEAP_16
+  , HEAP_24
+  , HEAP_32
+  , HEAP_40
+  , HEAP_48
+  , HEAP_56
+  , HEAP_64
+  , HEAP_72
+  , HEAP_80
+  , HEAP_88
+  , HEAP_96
+  , HEAP_104
+  , HEAP_112
+  , HEAP_120
+  , HEAP_128
 } gc_heap_type;
 
 /** The number of `gc_heap_type`'s */
-#define NUM_HEAP_TYPES (HEAP_HUGE + 1)
+#define NUM_HEAP_TYPES (HEAP_128 + 1)
 
 /** 
  * Linked list of free memory chunks on a heap page

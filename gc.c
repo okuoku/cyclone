@@ -36,7 +36,8 @@
 #define gc_align(n, bits) (((n)+(1<<(bits))-1)&(((uintptr_t)-1)-((1<<(bits))-1)))
 // 64-bit is 3, 32-bit is 2
 //#define gc_word_align(n) gc_align((n), 2)
-#define gc_heap_align(n) gc_align(n, 5)
+#define gc_heap_align(n) gc_align(n, 3)
+#define GC_HEAP_BLOCK_SIZE 8
 
 #if INTPTR_MAX == INT64_MAX
   #define REST_HEAP_MIN_SIZE 128
@@ -1079,20 +1080,20 @@ void gc_collector_sweep()
     }
 
     // TODO: this loop only includes smallest 2 heaps, is that sufficient??
-    for (heap_type = 0; heap_type < 2; heap_type++) {
+    for (heap_type = HEAP_16; heap_type < HEAP_128; heap_type++) {
       while ( ck_pr_load_ptr(&(m->cached_heap_free_sizes[heap_type])) <
              (ck_pr_load_ptr(&(m->cached_heap_total_sizes[heap_type])) * GC_FREE_THRESHOLD)) {
 #if GC_DEBUG_TRACE
         fprintf(stderr, "Less than %f%% of the heap %d is free, growing it\n",
                 100.0 * GC_FREE_THRESHOLD, heap_type);
 #endif
-        if (heap_type == HEAP_SM) {
+        //if (heap_type == HEAP_SM) {
+        //  gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
+        //} else if (heap_type == HEAP_64) {
+        //  gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
+        //} else if (heap_type == HEAP_REST) {
           gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
-        } else if (heap_type == HEAP_64) {
-          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
-        } else if (heap_type == HEAP_REST) {
-          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
-        }
+        //}
       }
     }
     // Clear allocation counts to delay next GC trigger
@@ -2101,6 +2102,7 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
                          long stack_size)
 {
   char stack_ref;
+  int i;
   thd->stack_start = stack_base;
 #if STACK_GROWTH_IS_DOWNWARD
   thd->stack_limit = stack_base - stack_size;
@@ -2154,11 +2156,14 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
   thd->heap = calloc(1, sizeof(gc_heap_root));
   thd->heap->heap = calloc(1, sizeof(gc_heap *) * NUM_HEAP_TYPES);
   thd->heap->heap[HEAP_REST] = gc_heap_create(HEAP_REST, INITIAL_HEAP_SIZE, 0, 0, thd);
-  //gc_heap_create_rest(thd->heap->heap[HEAP_REST], thd); // REST-specific init
-  thd->heap->heap[HEAP_SM] = gc_heap_create(HEAP_SM, INITIAL_HEAP_SIZE, 0, 0, thd);
-  thd->heap->heap[HEAP_64] = gc_heap_create(HEAP_64, INITIAL_HEAP_SIZE, 0, 0, thd);
-  if (sizeof(void *) == 8) { // Only use this heap on 64-bit platforms
-    thd->heap->heap[HEAP_96] = gc_heap_create(HEAP_96, INITIAL_HEAP_SIZE, 0, 0, thd);
+  ////gc_heap_create_rest(thd->heap->heap[HEAP_REST], thd); // REST-specific init
+  //thd->heap->heap[HEAP_SM] = gc_heap_create(HEAP_SM, INITIAL_HEAP_SIZE, 0, 0, thd);
+  //thd->heap->heap[HEAP_64] = gc_heap_create(HEAP_64, INITIAL_HEAP_SIZE, 0, 0, thd);
+  //if (sizeof(void *) == 8) { // Only use this heap on 64-bit platforms
+  //  thd->heap->heap[HEAP_96] = gc_heap_create(HEAP_96, INITIAL_HEAP_SIZE, 0, 0, thd);
+  //}
+  for (i = HEAP_16 ; i < NUM_HEAP_TYPES; i++) {
+    thd->heap->heap[i] = gc_heap_create(i, INITIAL_HEAP_SIZE, 0, 0, thd);
   }
   thd->heap->heap[HEAP_HUGE] = gc_heap_create(HEAP_HUGE, 1024, 0, 0, thd);
 }
