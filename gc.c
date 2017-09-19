@@ -1417,38 +1417,75 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
   // entire handshake/trace/sweep cycle, ideally without growing heap.
   if (ck_pr_load_int(&gc_stage) == STAGE_RESTING &&
       (
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_16])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_16])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_24])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_24])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_32])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_32])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_40])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_40])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_48])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_48])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_56])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_56])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_64])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_64])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_72])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_72])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_80])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_80])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_88])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_88])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_96])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_96])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_104])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_104])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_112])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_112])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_120])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_120])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_128])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_128])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_REST])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_REST])) * GC_COLLECTION_THRESHOLD) ||
+
+       // Runs GC too infrequently
+       ((ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_16]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_24]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_32]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_40]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_48]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_56]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_64]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_72]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_80]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_88]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_96]))  +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_104])) +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_112])) +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_120])) +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_128])) +
+         ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_REST]))) <
+        (ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_16]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_24]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_32]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_40]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_48]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_56]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_64]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_72]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_80]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_88]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_96]))  +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_104])) +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_112])) +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_120])) +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_128])) +
+         ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_REST]))) * GC_COLLECTION_THRESHOLD) ||
+
+         // Runs GC too frequently
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_16])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_16])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_24])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_24])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_32])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_32])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_40])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_40])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_48])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_48])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_56])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_56])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_64])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_64])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_72])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_72])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_80])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_80])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_88])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_88])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_96])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_96])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_104])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_104])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_112])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_112])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_120])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_120])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_128])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_128])) * GC_COLLECTION_THRESHOLD) ||
+//       (ck_pr_load_ptr(&( thd->cached_heap_free_sizes[HEAP_REST])) <
+//        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_REST])) * GC_COLLECTION_THRESHOLD) ||
+
 //       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_SM])) <
 //        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_SM])) * GC_COLLECTION_THRESHOLD) ||
 //       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_64])) <
