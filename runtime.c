@@ -977,7 +977,7 @@ object Cyc_write_va_list(void *data, int argc, object x, va_list ap)
   return Cyc_write(data, x, fp);
 }
 
-static object _Cyc_write(void *data, object x, FILE * port)
+static object _Cyc_write(void *data, object x, FILE * port, int *char_count, int line_limit)
 {
   object tmp = NULL;
   object has_cycle = boolean_f;
