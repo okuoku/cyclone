@@ -714,11 +714,11 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
   for (; h; h = h->next) {      // All heaps
     // TODO: chunk size (ignoring for now)
 
-TODO: is it worth creating a try_alloc_fixed for the fixed-size heaps? could remove a couple of
-checks below, might speed things up a bit since try_alloc is called so often.
-downsize is need to figure out how to call into it instead. could make the calling code in gc_alloc
-a macro (with function name input) and call it 5 times. or use function pointers, but would that
-generate slower code? could try both and see if it matters much one way or another
+// TODO: is it worth creating a try_alloc_fixed for the fixed-size heaps? could remove a couple of
+// checks below, might speed things up a bit since try_alloc is called so often.
+// downsize is need to figure out how to call into it instead. could make the calling code in gc_alloc
+// a macro (with function name input) and call it 5 times. or use function pointers, but would that
+// generate slower code? could try both and see if it matters much one way or another
 
 // TODO: could we use bump&pop here to allocate directly from 
 // heap if remaining > 0?
@@ -851,6 +851,26 @@ void *gc_alloc_from_bignum(gc_thread_data *data, bignum_type *src)
   return gc_alloc(((gc_thread_data *)data)->heap, sizeof(bignum_type), (char *)(src), (gc_thread_data *)data, &heap_grown);
 }
 
+#define try_alloc_body(TRY_FUNC) \
+  h = hrt->heap[heap_type]; \
+  result = gc_try_alloc(h, heap_type, size, obj, thd); \
+  if (!result) { \
+    /* A vanilla mark&sweep collector would collect now, but unfortunately */ \
+    /* we can't do that because we have to go through multiple stages, some */ \
+    /* of which are asynchronous. So... no choice but to grow the heap. */ \
+    gc_grow_heap(h, heap_type, size, 0, thd); \
+    *heap_grown = 1; \
+    result = gc_try_alloc(h, heap_type, size, obj, thd); \
+    if (!result) { \
+      fprintf(stderr, "out of memory error allocating %zu bytes\n", size); \
+      fprintf(stderr, "Heap type %d diagnostics:\n", heap_type); \
+      pthread_mutex_lock(&(thd->heap_lock)); \
+      gc_print_stats(h); \
+      pthread_mutex_unlock(&(thd->heap_lock)); /* why not */ \
+      exit(1);                  /* could throw error, but OOM is a major issue, so... */ \
+    } \
+  } \
+
 /**
  * @brief Allocate memory on the heap for an object
  * @param hrt   The root of the heap to allocate from
@@ -892,28 +912,13 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
     // Special case, at least for now
     //return gc_alloc_rest(hrt, size, obj, thd, heap_grown);
   }
-  h = hrt->heap[heap_type];
+
+  try_alloc_body(gc_try_alloc);
+
 #if GC_DEBUG_TRACE
   allocated_heap_counts[heap_type]++;
 #endif
 
-  result = gc_try_alloc(h, heap_type, size, obj, thd);
-  if (!result) {
-    // A vanilla mark&sweep collector would collect now, but unfortunately
-    // we can't do that because we have to go through multiple stages, some
-    // of which are asynchronous. So... no choice but to grow the heap.
-    gc_grow_heap(h, heap_type, size, 0, thd);
-    *heap_grown = 1;
-    result = gc_try_alloc(h, heap_type, size, obj, thd);
-    if (!result) {
-      fprintf(stderr, "out of memory error allocating %zu bytes\n", size);
-      fprintf(stderr, "Heap type %d diagnostics:\n", heap_type);
-      pthread_mutex_lock(&(thd->heap_lock));
-      gc_print_stats(h);
-      pthread_mutex_unlock(&(thd->heap_lock)); // why not
-      exit(1);                  // could throw error, but OOM is a major issue, so...
-    }
-  }
 #if GC_DEBUG_VERBOSE
   fprintf(stderr, "alloc %p size = %zu, obj=%p, tag=%d, mark=%d\n", result,
           size, obj, type_of(obj), mark(((object) result)));
