@@ -714,6 +714,18 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
   for (; h; h = h->next) {      // All heaps
     // TODO: chunk size (ignoring for now)
 
+TODO: is it worth creating a try_alloc_fixed for the fixed-size heaps? could remove a couple of
+checks below, might speed things up a bit since try_alloc is called so often.
+downsize is need to figure out how to call into it instead. could make the calling code in gc_alloc
+a macro (with function name input) and call it 5 times. or use function pointers, but would that
+generate slower code? could try both and see if it matters much one way or another
+
+// TODO: could we use bump&pop here to allocate directly from 
+// heap if remaining > 0?
+// - would need to initialize remaining such that it will decrement to 0 cleanly
+// - obviously b&p only applies to the fixed-size heaps
+// - can only b&p until heap fills up, so need to assess if it even helps much in our GC
+
     for (f1 = h->free_list, f2 = f1->next; f2; f1 = f2, f2 = f2->next) {        // all free in this heap
       if (f2->size >= size) {   // Big enough for request
         // TODO: take whole chunk or divide up f2 (using f3)?
