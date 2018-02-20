@@ -276,6 +276,11 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   h->type = heap_type;
   h->size = size;
   h->ttl = 10;
+  if (heap_type < 3) { // Fixed size
+    h->remaining = size - (size % ((heap_type + 1) * 32));
+  } else {
+    h->remaining = 0;
+  }
   h->next_free = h;
   h->next_frees = NULL;
   h->last_alloc_size = 0;
@@ -789,7 +794,18 @@ void *gc_try_alloc_fixed_size(gc_heap * h, int heap_type, size_t size, char *obj
 // - obviously b&p only applies to the fixed-size heaps
 // - can only b&p until heap fills up, so need to assess if it even helps much in our GC
 
+// TODO: this makes alloc easy, but how do we sweep such a heap?
+    unsigned remaining = m_freeList.remaining;
+    if (remaining) {
+        unsigned cellSize = m_cellSize;
+        remaining -= cellSize;
+        m_freeList.remaining = remaining;
+        return m_freeList.payloadEnd - remaining - cellSize;
+    }
+
+
     for (f1 = h->free_list, f2 = f1->next; f2; f1 = f2, f2 = f2->next) {        // all free in this heap
+
       if (f2->size >= size) {   // Big enough for request
         if (f2->size >= (size + gc_heap_align(1) /* min obj size */ )) {
           f3 = (gc_free_list *) (((char *)f2) + size);

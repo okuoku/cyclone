@@ -190,6 +190,7 @@ struct gc_heap_t {
   unsigned int chunk_size;      // 0 for any size, other and heap will only alloc chunks of that size
   unsigned int max_size;
   unsigned int ttl; // Keep empty page alive this many times before freeing
+  unsigned int remaining;
   //
   gc_heap *next_free;
   unsigned int last_alloc_size;
