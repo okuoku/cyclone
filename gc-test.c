@@ -63,11 +63,16 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 // one complication here is we probably don't want to always have the 0-size "next" at the 
 void init_free_list(gc_heap *h) {
   // for this flavor, just layer a free list on top of unitialized memory
-  int remaining = h->size - (h->size & h->block_size);
-  // TODO: see below for notes on "next" pointers
+  gc_free_list *next;
+  int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
+  next = h->free_list = (gc_free_list *)h->data;
   while (remaining) {
-    remaining--;
+    printf("init remaining=%d next = %p\n", remaining, next);
+    next->next = (gc_free_list *)(((char *) next) + h->block_size);
+    next = next->next;
+    remaining -= h->block_size;
   }
+  next->next = NULL;
 } 
 
 void convert_to_free_list(gc_heap *h) {
@@ -106,6 +111,8 @@ void *alloc(gc_heap *h, int heap_type)
 void main(){
   int i;
   gc_heap *h = init_heap_bump_n_pop(0, 1000);
+  printf("data start = %p\n", h->data);
+  printf("data end = %p\n", h->data_end);
   printf("remaining = %d\n", h->remaining);
   printf(" 1 heap aligned - %lu\n", gc_heap_align(1));
   printf("32 heap aligned - %lu\n", gc_heap_align(32));
@@ -113,15 +120,19 @@ void main(){
   printf("96 heap aligned - %lu\n", gc_heap_align(96));
 
   printf("data start: %p\n", h->data);
-  for (i = 0; i < 100; i++) {
+  for (i = 0; i < 34; i++) {
     printf("alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
   }
 
   // TODO: convert free list
   // TODO: repeat above allocation with convertd free list
 
-  // TODO: init_free_list()
-  // TODO: repeat above allocation with free list
+  // repeat above allocation with free list
+  init_free_list(h);
+  printf("free list data start: %p\n", h->data);
+  for (i = 0; i < 34; i++) {
+    printf("free list alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
+  }
 
   // TODO: sweeping (both of bump and of free list)
 }
