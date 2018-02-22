@@ -42,15 +42,14 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 //  next->size = size - gc_heap_align(gc_free_chunk_size);
 //  next->next = NULL;
 
-  size_t block_size = (heap_type + 1) * 32;
-  char *payload_end;
-  // TODO: parameter to store heap type's block size?
-  // we have chunk size but it has other uses at the moment...
   if (heap_type < 3) { // Fixed size
-    h->remaining = size - (size % block_size);
-    h->payload_end = h->data + h->remaining;
+    h->block_size = (heap_type + 1) * 32;
+    h->remaining = size - (size % h->block_size);
+    h->data_end = h->data + h->remaining;
   } else {
+    h->block_size = 0;
     h->remaining = 0;
+    h->data_end = NULL;
   }
   h->free_list = NULL; // No free lists with bump+pop
   return h;
@@ -85,9 +84,8 @@ void *alloc(gc_heap *h, int heap_type)
   } else if (h->remaining) {
     // TODO: load block size from h
     // TODO: load payloadEnd from h as well?
-    unsigned block_size = (heap_type + 1) * 32; // TODO: just testing here
-    h->remaining -= block_size;
-    h->data + 
+    h->remaining -= h->block_size;
+    return h->data_end - h->remaining - h->block_size;
 //      return m_freeList.payloadEnd - remaining - cellSize;
   }
 
@@ -95,6 +93,7 @@ void *alloc(gc_heap *h, int heap_type)
 }
 
 void main(){
+  int i;
   gc_heap *h = init_heap_bump_n_pop(0, 1000);
   printf("remaining = %d\n", h->remaining);
   printf(" 1 heap aligned - %lu\n", gc_heap_align(1));
@@ -103,7 +102,7 @@ void main(){
   printf("96 heap aligned - %lu\n", gc_heap_align(96));
 
   printf("data start: %p\n", h->data);
-  printf("alloc 1: %p\n", alloc(h, 0);
-  printf("alloc 2: %p\n", alloc(h, 0);
-  printf("alloc 3: %p\n", alloc(h, 0);
+  for (i = 0; i < 100; i++) {
+    printf("alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
+  }
 }

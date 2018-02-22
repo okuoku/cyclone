@@ -191,6 +191,8 @@ struct gc_heap_t {
   unsigned int max_size;
   unsigned int ttl; // Keep empty page alive this many times before freeing
   unsigned int remaining;
+  unsigned block_size;
+  char *data_end;
   //
   gc_heap *next_free;
   unsigned int last_alloc_size;
