@@ -23,7 +23,7 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   gc_free_list *free, *next;
   gc_heap *h;
   size_t padded_size = gc_heap_pad_size(size);
-  h = malloc(padded_size);      // TODO: mmap?
+  h = malloc(padded_size);
   if (!h)
     return NULL;
   h->type = heap_type;
@@ -55,18 +55,32 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   return h;
 }
 
+// TODO: want 2 flavors of this, one with unitialized memory (for testing) and another that
+//       maps across a region of memory with allocated objects in it
+//       the second flavor needs to take into account h->remaining
+//
 // TODO: take a fixed-size heap page, possibly using bump&pop and convert it to use a free list
 // one complication here is we probably don't want to always have the 0-size "next" at the 
 void init_free_list(gc_heap *h) {
+  // for this flavor, just layer a free list on top of unitialized memory
+  int remaining = h->size - (h->size & h->block_size);
+  // TODO: see below for notes on "next" pointers
+  while (remaining) {
+    remaining--;
+  }
+} 
+
+void convert_to_free_list(gc_heap *h) {
   // TODO: remember anything after remaining is uninitialized!!
   // TODO: initialize next to NULL
   // TODO: loop from start to remaining, any white objects must be replaced with a free indicator, and next must be updated accordingly (IE, next = cur, current block's next = NULL)
   // TODO: any remaining at the end need to be initialized, no need to check object's free indicator
-} 
+
+}
 
 // TODO: for these next 2 to be any good at all, the free list impl needs to be faster than what cyclone
 //       already does, since bump&pop will be used rarely, and may not even make sense for us
-// TODO: try_alloc using bump&pop or new free list
+// Done: try_alloc using bump&pop or new free list
 // TODO: sweep using bump&pop or new free list
 
 void *alloc(gc_heap *h, int heap_type)
@@ -82,11 +96,8 @@ void *alloc(gc_heap *h, int heap_type)
     h->free_list = h->free_list->next;
     return result;
   } else if (h->remaining) {
-    // TODO: load block size from h
-    // TODO: load payloadEnd from h as well?
     h->remaining -= h->block_size;
     return h->data_end - h->remaining - h->block_size;
-//      return m_freeList.payloadEnd - remaining - cellSize;
   }
 
   return NULL; // Unable to allocate
@@ -105,4 +116,12 @@ void main(){
   for (i = 0; i < 100; i++) {
     printf("alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
   }
+
+  // TODO: convert free list
+  // TODO: repeat above allocation with convertd free list
+
+  // TODO: init_free_list()
+  // TODO: repeat above allocation with free list
+
+  // TODO: sweeping (both of bump and of free list)
 }
