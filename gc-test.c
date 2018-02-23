@@ -81,6 +81,13 @@ void init_free_list(gc_heap *h) {
 #define RANDOM_COLOR (rand() % 2)
 
 void convert_to_free_list(gc_heap *h) {
+  int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
+  while (remaining >= h->remaining) {
+    object obj = h->data_end - remaining - h->block_size;
+    int tag = type_of(obj);
+    printf("found object %d at %p with remaining=%lu\n", tag, obj, remaining);
+    remaining -= h->block_size;
+  }
   // TODO: remember anything after remaining is uninitialized!!
   // TODO: initialize next to NULL
   // TODO: loop from start to remaining, any white objects must be replaced with a free indicator, and next must be updated accordingly (IE, next = cur, current block's next = NULL)
@@ -113,8 +120,7 @@ void *alloc(gc_heap *h, int heap_type)
   return NULL; // Unable to allocate
 }
 
-void test_allocate_objects_on_free_list(gc_heap *h){
-  init_free_list(h); // create an empty free list
+void test_allocate_objects_on_bump_n_pop(gc_heap *h){
   int i, end = rand() % 10 + 20;
   for (i = 0; i < end; i++) {
   // TODO: for each next (randomly end, do not necessarily allocate everything
@@ -127,6 +133,7 @@ void test_allocate_objects_on_free_list(gc_heap *h){
     // randomly assign a color (either white or black)
     mark(p) = RANDOM_COLOR;
     grayed(p) = 0;
+    printf("test allocated list at %p\n", p);
   }
 }
 
@@ -147,8 +154,9 @@ void main(){
     printf("alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
   }
 
-  test_allocate_objects_on_free_list(h);
-  // TODO: convert free list
+  h = init_heap_bump_n_pop(0, 1000);
+  test_allocate_objects_on_bump_n_pop(h);
+  convert_to_free_list(h);
   // TODO: repeat above allocation with convertd free list
 
   // repeat above allocation with free list
