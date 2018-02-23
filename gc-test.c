@@ -1,4 +1,5 @@
 #include "include/cyclone/types.h"
+#include <time.h>
 #define GC_BLOCK_BITS 5
 #define GC_BLOCK_SIZE (1 << GC_BLOCK_BITS)
 
@@ -75,14 +76,9 @@ void init_free_list(gc_heap *h) {
   next->next = NULL;
 } 
 
-void test_allocate_objects_on_free_list(gc_heap *h){
-  init_free_list(h); // create an empty free list
-  // TODO: for each next (randomly end, do not necessarily allocate everything
-    // allocate
-    // assign an object to it
-      // randomly assign a color (either white or black)
-
-}
+#define TEST_COLOR_MARK 0
+#define TEST_COLOR_CLEAR 1
+#define RANDOM_COLOR (rand() % 2)
 
 void convert_to_free_list(gc_heap *h) {
   // TODO: remember anything after remaining is uninitialized!!
@@ -117,9 +113,27 @@ void *alloc(gc_heap *h, int heap_type)
   return NULL; // Unable to allocate
 }
 
+void test_allocate_objects_on_free_list(gc_heap *h){
+  init_free_list(h); // create an empty free list
+  int i, end = rand() % 10 + 20;
+  for (i = 0; i < end; i++) {
+  // TODO: for each next (randomly end, do not necessarily allocate everything
+    // allocate
+    pair_type *p = alloc(h, 0);
+    // assign an object to it
+    p->tag = pair_tag;
+    car(p) = NULL;
+    cdr(p) = NULL;
+    // randomly assign a color (either white or black)
+    mark(p) = RANDOM_COLOR;
+    grayed(p) = 0;
+  }
+}
+
 void main(){
   int i;
   gc_heap *h = init_heap_bump_n_pop(0, 1000);
+  srand(time(NULL));
   printf("data start = %p\n", h->data);
   printf("data end = %p\n", h->data_end);
   printf("remaining = %d\n", h->remaining);
@@ -133,6 +147,7 @@ void main(){
     printf("alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
   }
 
+  test_allocate_objects_on_free_list(h);
   // TODO: convert free list
   // TODO: repeat above allocation with convertd free list
 
