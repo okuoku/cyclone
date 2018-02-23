@@ -80,6 +80,7 @@ void init_free_list(gc_heap *h) {
 #define TEST_COLOR_CLEAR 1
 #define RANDOM_COLOR (rand() % 2)
 
+TODO: this function needs to take a heap using bump+pop (how would it know?) and convert it to use a free list
 void convert_to_free_list(gc_heap *h) {
   int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
   while (remaining >= h->remaining) {
