@@ -75,6 +75,15 @@ void init_free_list(gc_heap *h) {
   next->next = NULL;
 } 
 
+void test_allocate_objects_on_free_list(gc_heap *h){
+  init_free_list(h); // create an empty free list
+  // TODO: for each next (randomly end, do not necessarily allocate everything
+    // allocate
+    // assign an object to it
+      // randomly assign a color (either white or black)
+
+}
+
 void convert_to_free_list(gc_heap *h) {
   // TODO: remember anything after remaining is uninitialized!!
   // TODO: initialize next to NULL
