@@ -74,26 +74,57 @@ void init_free_list(gc_heap *h) {
     remaining -= h->block_size;
   }
   next->next = NULL;
+  h->data_end = NULL; // Indicate we are using free lists
 } 
 
 #define TEST_COLOR_MARK 0
 #define TEST_COLOR_CLEAR 1
 #define RANDOM_COLOR (rand() % 2)
 
-TODO: this function needs to take a heap using bump+pop (how would it know?) and convert it to use a free list
 void convert_to_free_list(gc_heap *h) {
+  gc_free_list *next;
   int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
+  if (h->data_end == NULL) return; // Already converted
+
+  next = h->free_list = NULL;
   while (remaining >= h->remaining) {
     object obj = h->data_end - remaining - h->block_size;
     int tag = type_of(obj);
-    printf("found object %d at %p with remaining=%lu\n", tag, obj, remaining);
+    int color = mark(obj);
+    printf("found object %d color %d at %p with remaining=%lu\n", tag, color, obj, remaining);
+    // free space, add it to the free list
+    if (color == TEST_COLOR_CLEAR) {
+      if (next == NULL) {
+        next = h->free_list = obj;
+      }
+      else {
+        next->next = obj;
+        next = next->next;
+      }
+    }
     remaining -= h->block_size;
   }
-  // TODO: remember anything after remaining is uninitialized!!
-  // TODO: initialize next to NULL
-  // TODO: loop from start to remaining, any white objects must be replaced with a free indicator, and next must be updated accordingly (IE, next = cur, current block's next = NULL)
-  // TODO: any remaining at the end need to be initialized, no need to check object's free indicator
 
+  // Convert any empty space at the end
+  while (remaining) {
+    object obj = h->data_end - remaining - h->block_size;
+    printf("no object at %p fill with free list\n", obj);
+    if (next == NULL) {
+      next = h->free_list = obj;
+    }
+    else {
+      next->next = (gc_free_list *)(((char *) next) + h->block_size);
+      next = next->next;
+    }
+    remaining -= h->block_size;
+  }
+
+  if (next) {
+    next->next = NULL;
+  }
+  // Let GC know this heap is not bump&pop
+  h->remaining = NULL;
+  h->data_end = NULL;
 }
 
 // TODO: for these next 2 to be any good at all, the free list impl needs to be faster than what cyclone
@@ -159,6 +190,10 @@ void main(){
   test_allocate_objects_on_bump_n_pop(h);
   convert_to_free_list(h);
   // TODO: repeat above allocation with convertd free list
+  printf("data start: %p\n", h->data);
+  for (i = 0; i < 34; i++) {
+    printf("alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
+  }
 
   // repeat above allocation with free list
   init_free_list(h);
