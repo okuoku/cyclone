@@ -172,21 +172,33 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
 
   for (; h; prev_h = h, h = h->next) {      // All heaps
 
-    gc_free_list *next;
+    //gc_free_list *next;
     int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
+    q = h->free_list;
     while (remaining) {
       p = h->data_end - remaining - h->block_size;
-      if (clear) {
-        // need to get h->free_list fixed up, then can use a next pointer...
-
-        // link q->next to this block
-          // Special case if h->free_list is after p (or is NULL), now p becomes h->free_list
-        // whatever q->next was pointing to now needs to be pointed to by p->next
-        // don't really need r,q,s(?) I think, since everything is the same size
+      if (mark(p) == TEST_COLOR_CLEAR) {
+        if (h->free_list == NULL) {
+          q = h->free_list = p;
+          h->free_list->next = NULL;
+        } else if (p <= h->free_list) {
+          s = (gc_free_list *)p;
+          s->next = h->free_list->next;
+          q = h->free_list = p;
+        } else {
+          // find preceding/succeeding free list pointers for p
+          for (r = q->next; r && ((char *)r < (char *)p); q = r, r = r->next) ;
+          if ((char *)r == (char *)p) {     // this is a free block, skip it
+            continue;
+          }
+          s = (gc_free_list *)p;
+          s->next = r;
+          q->next = s;
+        }
 
       }
 
-      //printf("sweep remaining=%d next = %p\n", remaining, next);
+      printf("sweep remaining=%d p = %p\n", remaining, p);
       //next->next = (gc_free_list *)(((char *) next) + h->block_size);
       //next = next->next;
       remaining -= h->block_size;
@@ -419,4 +431,6 @@ void main(){
   // TODO: sweeping (both of bump and of free list)
   size_t tmp;
   my_gc_sweep(h, 0, &tmp, NULL);
+  // TODO: print heap? or at least the free lists
+  // TODO: do more allocs
 }
