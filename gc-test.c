@@ -171,48 +171,70 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
 #endif
 
   for (; h; prev_h = h, h = h->next) {      // All heaps
-#if GC_DEBUG_TRACE
-    fprintf(stderr, "sweep heap %p, size = %zu\n", h, (size_t) h->size);
-#endif
-    p = gc_heap_first_block(h);
-    q = h->free_list;
-TODO: need to debug all of this. for example, q could be null if all of the free slots have been exhausted
-also, h->free_list keeps moving down, closer to the end. we may need to have a special case for the first
-instance of q... h->free_list will most likely be reassigned to the first garbage we find
 
-    end = gc_heap_end(h);
-    while (p < end) {
-      // find preceding/succeeding free list pointers for p
-      for (r = q->next; r && ((char *)r < (char *)p); q = r, r = r->next) ;
+    gc_free_list *next;
+    int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
+    while (remaining) {
+      p = h->data_end - remaining - h->block_size;
+      if (clear) {
+        // need to get h->free_list fixed up, then can use a next pointer...
 
-      if ((char *)r == (char *)p) {     // this is a free block, skip it
-        p = (object) (((char *)p) + h->block_size);
-#if GC_DEBUG_VERBOSE
-        fprintf(stderr, "skip free block %p size = %zu\n", p, h->block_size);
-#endif
-        continue;
+        // link q->next to this block
+          // Special case if h->free_list is after p (or is NULL), now p becomes h->free_list
+        // whatever q->next was pointing to now needs to be pointed to by p->next
+        // don't really need r,q,s(?) I think, since everything is the same size
+
       }
-      size = h->block_size;
 
-#if GC_SAFETY_CHECKS
-      if (!is_object_type(p)) {
-        fprintf(stderr, "sweep: invalid object at %p", p);
-        exit(1);
-      }
-      if ((char *)q + h->block_size > (char *)p) {
-        fprintf(stderr, "bad size at %p < %p + %u", p, q, h->block_size);
-        exit(1);
-      }
-      if (r && ((char *)p) + size > (char *)r) {
-        fprintf(stderr, "sweep: bad size at %p + %zu > %p", p, size, r);
-        exit(1);
-      }
-#endif
+      //printf("sweep remaining=%d next = %p\n", remaining, next);
+      //next->next = (gc_free_list *)(((char *) next) + h->block_size);
+      //next = next->next;
+      remaining -= h->block_size;
+    }
 
-printf("sweep p=%p q=%p r=%p\n", p, q, r);
-if (0) {
-  // TODO: different assumptions so need to sweep differently. in our new approach each free chunk is guaranteed to be h->block_size large (is last one a possible exception though?)
 
+//#if GC_DEBUG_TRACE
+//    fprintf(stderr, "sweep heap %p, size = %zu\n", h, (size_t) h->size);
+//#endif
+//    p = gc_heap_first_block(h);
+//    q = h->free_list;
+//TODO: need to debug all of this. for example, q could be null if all of the free slots have been exhausted
+//also, h->free_list keeps moving down, closer to the end. we may need to have a special case for the first
+//instance of q... h->free_list will most likely be reassigned to the first garbage we find
+//
+//    end = gc_heap_end(h);
+//    while (p < end) {
+//      // find preceding/succeeding free list pointers for p
+//      for (r = q->next; r && ((char *)r < (char *)p); q = r, r = r->next) ;
+//
+//      if ((char *)r == (char *)p) {     // this is a free block, skip it
+//        p = (object) (((char *)p) + h->block_size);
+//#if GC_DEBUG_VERBOSE
+//        fprintf(stderr, "skip free block %p size = %zu\n", p, h->block_size);
+//#endif
+//        continue;
+//      }
+//      size = h->block_size;
+//
+//#if GC_SAFETY_CHECKS
+//      if (!is_object_type(p)) {
+//        fprintf(stderr, "sweep: invalid object at %p", p);
+//        exit(1);
+//      }
+//      if ((char *)q + h->block_size > (char *)p) {
+//        fprintf(stderr, "bad size at %p < %p + %u", p, q, h->block_size);
+//        exit(1);
+//      }
+//      if (r && ((char *)p) + size > (char *)r) {
+//        fprintf(stderr, "sweep: bad size at %p + %zu > %p", p, size, r);
+//        exit(1);
+//      }
+//#endif
+//
+//printf("sweep p=%p q=%p r=%p\n", p, q, r);
+//if (0) {
+//  // TODO: different assumptions so need to sweep differently. in our new approach each free chunk is guaranteed to be h->block_size large (is last one a possible exception though?)
+//
 //      if (mark(p) == /*gc_color_clear*/ TEST_COLOR_CLEAR) {
 //#if GC_DEBUG_VERBOSE
 //        fprintf(stderr, "sweep is freeing unmarked obj: %p with tag %d\n", p,
@@ -275,13 +297,15 @@ if (0) {
 //          }
 //          p = (object) (((char *)p) + freed);
 //        }
-      } else {
-//#if GC_DEBUG_VERBOSE
-//        fprintf(stderr, "sweep: object is marked %p\n", p);
-//#endif
-        p = (object) (((char *)p) + size);
-      }
-    }
+//      } else {
+////#if GC_DEBUG_VERBOSE
+////        fprintf(stderr, "sweep: object is marked %p\n", p);
+////#endif
+//        p = (object) (((char *)p) + size);
+//      }
+//    }
+
+
 //    ck_pr_add_ptr(&(thd->cached_heap_free_sizes[heap_type]), heap_freed);
     // Free the heap page if possible.
     //
