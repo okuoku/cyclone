@@ -72,6 +72,7 @@ void init_free_list(gc_heap *h) {
     next->next = (gc_free_list *)(((char *) next) + h->block_size);
     next = next->next;
     remaining -= h->block_size;
+TODO: looks like there is an off-by-one error here (and other places like sweep), misses last slot
   }
   next->next = NULL;
   h->data_end = NULL; // Indicate we are using free lists
@@ -173,10 +174,11 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
   for (; h; prev_h = h, h = h->next) {      // All heaps
 
     //gc_free_list *next;
-    int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
+    int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one??
+    char *data_end = h->data + remaining;
     q = h->free_list;
     while (remaining) {
-      p = h->data_end - remaining - h->block_size;
+      p = data_end - remaining;
       if (mark(p) == TEST_COLOR_CLEAR) {
         if (h->free_list == NULL) {
           q = h->free_list = p;
