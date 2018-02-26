@@ -35,7 +35,7 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 //  h->last_alloc_size = 0;
 //
   h->data = (char *)gc_heap_align(sizeof(h->data) + (uintptr_t) & (h->data));
-//  h->next = NULL;
+  h->next = NULL;
 //  free = h->free_list = (gc_free_list *) h->data;
 //  next = (gc_free_list *) (((char *)free) + gc_heap_align(gc_free_chunk_size));
 //  free->size = 0;               // First one is just a dummy record
@@ -81,6 +81,7 @@ void init_free_list(gc_heap *h) {
 #define TEST_COLOR_CLEAR 1
 #define RANDOM_COLOR (rand() % 2)
 
+// Essentially this is half of the sweep code, for sweeping bump&pop
 void convert_to_free_list(gc_heap *h) {
   gc_free_list *next;
   int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
@@ -123,7 +124,7 @@ void convert_to_free_list(gc_heap *h) {
     next->next = NULL;
   }
   // Let GC know this heap is not bump&pop
-  h->remaining = NULL;
+  h->remaining = 0;
   h->data_end = NULL;
 }
 
@@ -131,6 +132,195 @@ void convert_to_free_list(gc_heap *h) {
 //       already does, since bump&pop will be used rarely, and may not even make sense for us
 // Done: try_alloc using bump&pop or new free list
 // TODO: sweep using bump&pop or new free list
+
+//TODO: to sweep free list, let's take the code from gc.c (below) and simplify as needed
+/**
+ * @brief Sweep portion of the GC algorithm
+ * @param h           Heap to sweep
+ * @param heap_type   Type of heap, based on object sizes allocated on it
+ * @param sum_freed_ptr Out parameter tracking the sum of freed data, in bytes.
+ *                      This parameter is ignored if NULL is passed.
+ * @param thd           Thread data object for the mutator using this heap
+ * @return Return the size of the largest object freed, in bytes
+ *
+ * This portion of the major GC algorithm is responsible for returning unused
+ * memory slots to the heap. It is only called by the collector thread after
+ * the heap has been traced to identify live objects.
+ */
+void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_data *thd)
+{
+  size_t freed, heap_freed = 0, sum_freed = 0, size;
+  object p, end;
+  gc_free_list *q, *r, *s;
+#if GC_DEBUG_SHOW_SWEEP_DIAG
+  gc_heap *orig_heap_ptr = h;
+#endif
+  gc_heap *prev_h = NULL;
+
+  //
+  // Lock the heap to prevent issues with allocations during sweep
+  // This coarse-grained lock actually performed better than a fine-grained one.
+  //
+//  pthread_mutex_lock(&(thd->heap_lock));
+  h->next_free = h;
+
+#if GC_DEBUG_SHOW_SWEEP_DIAG
+  fprintf(stderr, "\nBefore sweep -------------------------\n");
+  fprintf(stderr, "Heap %d diagnostics:\n", heap_type);
+  gc_print_stats(orig_heap_ptr);
+#endif
+
+  for (; h; prev_h = h, h = h->next) {      // All heaps
+#if GC_DEBUG_TRACE
+    fprintf(stderr, "sweep heap %p, size = %zu\n", h, (size_t) h->size);
+#endif
+    p = gc_heap_first_block(h);
+    q = h->free_list;
+TODO: need to debug all of this. for example, q could be null if all of the free slots have been exhausted
+also, h->free_list keeps moving down, closer to the end. we may need to have a special case for the first
+instance of q... h->free_list will most likely be reassigned to the first garbage we find
+
+    end = gc_heap_end(h);
+    while (p < end) {
+      // find preceding/succeeding free list pointers for p
+      for (r = q->next; r && ((char *)r < (char *)p); q = r, r = r->next) ;
+
+      if ((char *)r == (char *)p) {     // this is a free block, skip it
+        p = (object) (((char *)p) + h->block_size);
+#if GC_DEBUG_VERBOSE
+        fprintf(stderr, "skip free block %p size = %zu\n", p, h->block_size);
+#endif
+        continue;
+      }
+      size = h->block_size;
+
+#if GC_SAFETY_CHECKS
+      if (!is_object_type(p)) {
+        fprintf(stderr, "sweep: invalid object at %p", p);
+        exit(1);
+      }
+      if ((char *)q + h->block_size > (char *)p) {
+        fprintf(stderr, "bad size at %p < %p + %u", p, q, h->block_size);
+        exit(1);
+      }
+      if (r && ((char *)p) + size > (char *)r) {
+        fprintf(stderr, "sweep: bad size at %p + %zu > %p", p, size, r);
+        exit(1);
+      }
+#endif
+
+printf("sweep p=%p q=%p r=%p\n", p, q, r);
+if (0) {
+  // TODO: different assumptions so need to sweep differently. in our new approach each free chunk is guaranteed to be h->block_size large (is last one a possible exception though?)
+
+//      if (mark(p) == /*gc_color_clear*/ TEST_COLOR_CLEAR) {
+//#if GC_DEBUG_VERBOSE
+//        fprintf(stderr, "sweep is freeing unmarked obj: %p with tag %d\n", p,
+//                type_of(p));
+//#endif
+//        mark(p) = gc_color_blue;        // Needed?
+///* TODO:
+//        if (type_of(p) == mutex_tag) {
+//#if GC_DEBUG_VERBOSE
+//          fprintf(stderr, "pthread_mutex_destroy from sweep\n");
+//#endif
+//          if (pthread_mutex_destroy(&(((mutex) p)->lock)) != 0) {
+//            fprintf(stderr, "Error destroying mutex\n");
+//            exit(1);
+//          }
+//        } else if (type_of(p) == cond_var_tag) {
+//#if GC_DEBUG_VERBOSE
+//          fprintf(stderr, "pthread_cond_destroy from sweep\n");
+//#endif
+//          if (pthread_cond_destroy(&(((cond_var) p)->cond)) != 0) {
+//            fprintf(stderr, "Error destroying condition variable\n");
+//            exit(1);
+//          }
+//        } else if (type_of(p) == bignum_tag) {
+//          // TODO: this is no good if we abandon bignum's on the stack
+//          // in that case the finalizer is never called
+//#if GC_DEBUG_VERBOSE
+//          fprintf(stderr, "mp_clear from sweep\n");
+//#endif
+//          mp_clear(&(((bignum_type *)p)->bn));
+//        }
+//*/
+//        // free p
+//        heap_freed += size;
+//        if (((((char *)q) + h->block_size) == (char *)p) && (q != h->free_list)) {
+//          /* merge q with p */
+//          if (r && h->block_size && ((((char *)p) + size) == (char *)r)) {
+//            // ... and with r
+//            q->next = r->next;
+//            freed = q->size + size + r->size;
+//            p = (object) (((char *)p) + size + r->size);
+//          } else {
+//            freed = q->size + size;
+//            p = (object) (((char *)p) + size);
+//          }
+//          q->size = freed;
+//        } else {
+//          s = (gc_free_list *) p;
+//          if (r && r->size && ((((char *)p) + size) == (char *)r)) {
+//            // merge p with r
+//            s->size = size + r->size;
+//            s->next = r->next;
+//            q->next = s;
+//            freed = size + r->size;
+//          } else {
+//            s->size = size;
+//            s->next = r;
+//            q->next = s;
+//            freed = size;
+//          }
+//          p = (object) (((char *)p) + freed);
+//        }
+      } else {
+//#if GC_DEBUG_VERBOSE
+//        fprintf(stderr, "sweep: object is marked %p\n", p);
+//#endif
+        p = (object) (((char *)p) + size);
+      }
+    }
+//    ck_pr_add_ptr(&(thd->cached_heap_free_sizes[heap_type]), heap_freed);
+    // Free the heap page if possible.
+    //
+    // With huge heaps, this becomes more important. one of the huge
+    // pages only has one object, so it is likely that the page
+    // will become free at some point and could be reclaimed.
+    //
+    // The newly created flag is used to attempt to avoid situtaions
+    // where a page is allocated because there is not enough free space,
+    // but then we do a sweep and see it is empty so we free it, and
+    // so forth. A better solution might be to keep empty heap pages
+    // off to the side and only free them if there is enough free space
+    // remaining without them.
+    //
+    // Experimenting with only freeing huge heaps
+//    if (gc_is_heap_empty(h) && 
+//          (h->type == HEAP_HUGE || !(h->ttl--))) {
+//        unsigned int h_size = h->size;
+//        gc_heap *new_h = gc_heap_free(h, prev_h);
+//        if (new_h) { // Ensure free succeeded
+//          h = new_h;
+////          ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type] ), h_size);
+////          ck_pr_sub_ptr(&(thd->cached_heap_total_sizes[heap_type]), h_size);
+//        }
+//    }
+    sum_freed += heap_freed;
+    heap_freed = 0;
+  }
+
+#if GC_DEBUG_SHOW_SWEEP_DIAG
+  fprintf(stderr, "\nAfter sweep -------------------------\n");
+  fprintf(stderr, "Heap %d diagnostics:\n", heap_type);
+  gc_print_stats(orig_heap_ptr);
+#endif
+
+//  pthread_mutex_unlock(&(thd->heap_lock));
+  if (sum_freed_ptr)
+    *sum_freed_ptr = sum_freed;
+}
 
 void *alloc(gc_heap *h, int heap_type)
 {
@@ -203,4 +393,6 @@ void main(){
   }
 
   // TODO: sweeping (both of bump and of free list)
+  size_t tmp;
+  my_gc_sweep(h, 0, &tmp, NULL);
 }
