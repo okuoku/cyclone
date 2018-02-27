@@ -23,7 +23,9 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 {
   gc_free_list *free, *next;
   gc_heap *h;
-  size_t padded_size = gc_heap_pad_size(size);
+  size_t padded_size;
+  size = gc_heap_align(size);
+  padded_size = gc_heap_pad_size(size);
   h = malloc(padded_size);
   if (!h)
     return NULL;
@@ -65,14 +67,15 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 void init_free_list(gc_heap *h) {
   // for this flavor, just layer a free list on top of unitialized memory
   gc_free_list *next;
-  int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
+  int i = 0, remaining = h->size - (h->size % h->block_size) - h->block_size; // Starting at first one so skip it
   next = h->free_list = (gc_free_list *)h->data;
-  while (remaining) {
-    printf("init remaining=%d next = %p\n", remaining, next);
+  printf("data start = %p\n", h->data);
+  printf("data end = %p\n", h->data + h->size);
+  while (remaining >= h->block_size) {
+    printf("%d init remaining=%d next = %p\n", i++, remaining, next);
     next->next = (gc_free_list *)(((char *) next) + h->block_size);
     next = next->next;
     remaining -= h->block_size;
-TODO: looks like there is an off-by-one error here (and other places like sweep), misses last slot
   }
   next->next = NULL;
   h->data_end = NULL; // Indicate we are using free lists
@@ -85,12 +88,12 @@ TODO: looks like there is an off-by-one error here (and other places like sweep)
 // Essentially this is half of the sweep code, for sweeping bump&pop
 void convert_to_free_list(gc_heap *h) {
   gc_free_list *next;
-  int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one
+  int remaining = h->size - (h->size % h->block_size);
   if (h->data_end == NULL) return; // Already converted
 
   next = h->free_list = NULL;
-  while (remaining >= h->remaining) {
-    object obj = h->data_end - remaining - h->block_size;
+  while (remaining > h->remaining) {
+    object obj = h->data_end - remaining;
     int tag = type_of(obj);
     int color = mark(obj);
     printf("found object %d color %d at %p with remaining=%lu\n", tag, color, obj, remaining);
@@ -109,7 +112,7 @@ void convert_to_free_list(gc_heap *h) {
 
   // Convert any empty space at the end
   while (remaining) {
-    object obj = h->data_end - remaining - h->block_size;
+    object obj = h->data_end - remaining;
     printf("no object at %p fill with free list\n", obj);
     if (next == NULL) {
       next = h->free_list = obj;
@@ -174,7 +177,7 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
   for (; h; prev_h = h, h = h->next) {      // All heaps
 
     //gc_free_list *next;
-    int remaining = h->size - (h->size % h->block_size) - h->block_size; // Remove first one??
+    int remaining = h->size - (h->size % h->block_size); // - h->block_size; // Remove first one??
     char *data_end = h->data + remaining;
     q = h->free_list;
     while (remaining) {
@@ -393,12 +396,13 @@ void test_allocate_objects_on_bump_n_pop(gc_heap *h){
     // randomly assign a color (either white or black)
     mark(p) = RANDOM_COLOR;
     grayed(p) = 0;
-    printf("test allocated list at %p\n", p);
+    printf("test allocated list %d at %p\n", mark(p), p);
   }
 }
 
 void main(){
   int i;
+  void *tmp;
   gc_heap *h = init_heap_bump_n_pop(0, 1000);
   srand(time(NULL));
   printf("data start = %p\n", h->data);
@@ -411,7 +415,8 @@ void main(){
 
   printf("data start: %p\n", h->data);
   for (i = 0; i < 34; i++) {
-    printf("alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
+    tmp = alloc(h, 0);
+    printf("alloc %d: %p remaining: %lu\n", i, tmp, h->remaining);
   }
 
   h = init_heap_bump_n_pop(0, 1000);
@@ -420,19 +425,21 @@ void main(){
   // TODO: repeat above allocation with convertd free list
   printf("data start: %p\n", h->data);
   for (i = 0; i < 34; i++) {
-    printf("alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
+    tmp = alloc(h, 0);
+    printf("alloc %d: %p remaining: %lu\n", i, tmp, h->remaining);
   }
 
   // repeat above allocation with free list
   init_free_list(h);
   printf("free list data start: %p\n", h->data);
   for (i = 0; i < 34; i++) {
-    printf("free list alloc %d: %p remaining: %lu\n", i, alloc(h, 0), h->remaining);
+    tmp = alloc(h, 0);
+    printf("free list alloc %d: %p remaining: %lu\n", i, tmp, h->remaining);
   }
 
   // TODO: sweeping (both of bump and of free list)
-  size_t tmp;
-  my_gc_sweep(h, 0, &tmp, NULL);
+  size_t tmpsz;
+  my_gc_sweep(h, 0, &tmpsz, NULL);
   // TODO: print heap? or at least the free lists
   // TODO: do more allocs
 }
