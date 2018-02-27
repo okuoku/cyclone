@@ -435,6 +435,8 @@ void main(){
   for (i = 0; i < 34; i++) {
     tmp = alloc(h, 0);
     printf("free list alloc %d: %p remaining: %lu\n", i, tmp, h->remaining);
+TODO: actually fill each slot with a randomly-colored object, then output what sweep does.
+once both of those work, let's do multiple alloc/sweep cycles and make sure everything works well
   }
 
   // TODO: sweeping (both of bump and of free list)
