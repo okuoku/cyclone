@@ -186,10 +186,12 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
         if (h->free_list == NULL) {
           q = h->free_list = p;
           h->free_list->next = NULL;
+          printf("sweep remaining=%d, %p, assign h->free_list\n", remaining, p);
         } else if ((char *)p <= (char *)h->free_list) {
           s = (gc_free_list *)p;
           s->next = h->free_list->next;
           q = h->free_list = p;
+          printf("sweep remaining=%d, %p, assign h->free_list and next\n", remaining, p);
         } else {
           // find preceding/succeeding free list pointers for p
           for (r = q->next; r && ((char *)r < (char *)p); q = r, r = r->next) ;
@@ -199,11 +201,12 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
           s = (gc_free_list *)p;
           s->next = r;
           q->next = s;
+          printf("sweep remaining=%d, %p, q=%p, r=%p\n", remaining, p, q, r);
         }
 
+      } else {
+        printf("sweep block is still used remaining=%d p = %p\n", remaining, p);
       }
-
-      printf("sweep remaining=%d p = %p\n", remaining, p);
       //next->next = (gc_free_list *)(((char *) next) + h->block_size);
       //next = next->next;
       remaining -= h->block_size;
@@ -383,6 +386,16 @@ void *alloc(gc_heap *h, int heap_type)
   return NULL; // Unable to allocate
 }
 
+void print_free_list(gc_heap *h) {
+  gc_free_list *f = h->free_list;
+  printf("printing free list:\n");
+  while(f) {
+    printf("%p\n", f);
+    f = f->next;
+  }
+  printf("done\n");
+}
+
 void test_allocate_objects_on_bump_n_pop(gc_heap *h){
   int i, end = rand() % 10 + 20;
   for (i = 0; i < end; i++) {
@@ -442,13 +455,25 @@ void main(){
       grayed(p) = 0;
     }
     printf("free list alloc %d: %p color: %d remaining: %lu\n", i, p, color, h->remaining);
-//TODO: actually fill each slot with a randomly-colored object, then output what sweep does.
-//once both of those work, let's do multiple alloc/sweep cycles and make sure everything works well
   }
 
   // TODO: sweeping (both of bump and of free list)
   size_t tmpsz;
   my_gc_sweep(h, 0, &tmpsz, NULL);
-  // TODO: print heap? or at least the free lists
-  // TODO: do more allocs
+  print_free_list(h);
+
+  // do more allocs
+  for (i = 0; i < 34; i++) {
+    pair_type *p = alloc(h, 0);
+    int color = -1;
+    if (p) {
+      p->tag = pair_tag;
+      car(p) = cdr(p) = NULL;
+      color = mark(p) = RANDOM_COLOR;
+      grayed(p) = 0;
+    }
+    printf("free list alloc %d: %p color: %d remaining: %lu\n", i, p, color, h->remaining);
+  }
+  my_gc_sweep(h, 0, &tmpsz, NULL);
+  print_free_list(h);
 }
