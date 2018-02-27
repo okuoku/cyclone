@@ -186,7 +186,7 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
         if (h->free_list == NULL) {
           q = h->free_list = p;
           h->free_list->next = NULL;
-        } else if (p <= h->free_list) {
+        } else if ((char *)p <= (char *)h->free_list) {
           s = (gc_free_list *)p;
           s->next = h->free_list->next;
           q = h->free_list = p;
@@ -433,10 +433,17 @@ void main(){
   init_free_list(h);
   printf("free list data start: %p\n", h->data);
   for (i = 0; i < 34; i++) {
-    tmp = alloc(h, 0);
-    printf("free list alloc %d: %p remaining: %lu\n", i, tmp, h->remaining);
-TODO: actually fill each slot with a randomly-colored object, then output what sweep does.
-once both of those work, let's do multiple alloc/sweep cycles and make sure everything works well
+    pair_type *p = alloc(h, 0);
+    int color = -1;
+    if (p) {
+      p->tag = pair_tag;
+      car(p) = cdr(p) = NULL;
+      color = mark(p) = RANDOM_COLOR;
+      grayed(p) = 0;
+    }
+    printf("free list alloc %d: %p color: %d remaining: %lu\n", i, p, color, h->remaining);
+//TODO: actually fill each slot with a randomly-colored object, then output what sweep does.
+//once both of those work, let's do multiple alloc/sweep cycles and make sure everything works well
   }
 
   // TODO: sweeping (both of bump and of free list)
