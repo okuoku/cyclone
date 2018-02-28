@@ -269,18 +269,15 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 {
   gc_free_list *free, *next;
   gc_heap *h;
-  size_t padded_size = gc_heap_pad_size(size);
+  size_t padded_size;
+  size = gc_heap_align(size);
+  padded_size = gc_heap_pad_size(size);
   h = malloc(padded_size);      // TODO: mmap?
   if (!h)
     return NULL;
   h->type = heap_type;
   h->size = size;
   h->ttl = 10;
-  if (heap_type < 3) { // Fixed size
-    h->remaining = size - (size % ((heap_type + 1) * 32));
-  } else {
-    h->remaining = 0;
-  }
   h->next_free = h;
   h->next_frees = NULL;
   h->last_alloc_size = 0;
@@ -308,8 +305,106 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   fprintf(stderr, ("free1: %p-%p free2: %p-%p\n"), free,
           ((char *)free) + free->size, next, ((char *)next) + next->size);
 #endif
+  if (heap_type < 3) { // Fixed size
+    h->block_size = (heap_type + 1) * 32;
+    h->remaining = size - (size % h->block_size);
+    h->data_end = h->data + h->remaining;
+    h->free_list = NULL; // No free lists with bump&pop
+  } else {
+    h->block_size = 0;
+    h->remaining = 0;
+    h->data_end = NULL;
+  }
   return h;
 }
+
+/**
+ * @brief   Initialize free lists within a single heap page.
+ *          Assumes that there is no data currently on the heap page!
+ * @param   h     Heap page to initialize
+ */
+void gc_init_fixed_size_free_list(gc_heap *h)
+{
+  // for this flavor, just layer a free list on top of unitialized memory
+  gc_free_list *next;
+  int i = 0, remaining = h->size - (h->size % h->block_size) - h->block_size; // Starting at first one so skip it
+  next = h->free_list = (gc_free_list *)h->data;
+  //printf("data start = %p\n", h->data);
+  //printf("data end = %p\n", h->data + h->size);
+  while (remaining >= h->block_size) {
+    //printf("%d init remaining=%d next = %p\n", i++, remaining, next);
+    next->next = (gc_free_list *)(((char *) next) + h->block_size);
+    next = next->next;
+    remaining -= h->block_size;
+  }
+  next->next = NULL;
+  h->data_end = NULL; // Indicate we are using free lists
+} 
+
+/**
+ * @brief Diagnostic function to print all free lists on a fixed-size heap page
+ * @param h Heap page to output
+ */
+void gc_print_fixed_size_free_list(gc_heap *h)
+{
+  gc_free_list *f = h->free_list;
+  printf("printing free list:\n");
+  while(f) {
+    printf("%p\n", f);
+    f = f->next;
+  }
+  printf("done\n");
+}
+
+// Essentially this is half of the sweep code, for sweeping bump&pop
+void convert_to_free_list(gc_heap *h) 
+{
+  gc_free_list *next;
+  int remaining = h->size - (h->size % h->block_size);
+  if (h->data_end == NULL) return; // Already converted
+
+  next = h->free_list = NULL;
+  while (remaining > h->remaining) {
+    object obj = h->data_end - remaining;
+    int tag = type_of(obj);
+    int color = mark(obj);
+    printf("found object %d color %d at %p with remaining=%lu\n", tag, color, obj, remaining);
+    // free space, add it to the free list
+    if (color == TEST_COLOR_CLEAR) {
+      if (next == NULL) {
+        next = h->free_list = obj;
+      }
+      else {
+        next->next = obj;
+        next = next->next;
+      }
+    }
+    remaining -= h->block_size;
+  }
+
+  // Convert any empty space at the end
+  while (remaining) {
+    object obj = h->data_end - remaining;
+    printf("no object at %p fill with free list\n", obj);
+    if (next == NULL) {
+      next = h->free_list = obj;
+    }
+    else {
+      next->next = (gc_free_list *)(((char *) next) + h->block_size);
+      next = next->next;
+    }
+    remaining -= h->block_size;
+  }
+
+  if (next) {
+    next->next = NULL;
+  }
+  // Let GC know this heap is not bump&pop
+  h->remaining = 0;
+  h->data_end = NULL;
+}
+
+//TODO: port over and integrate new fixed-size sweep and alloc (really try_alloc) functions
 
 /**
  * @brief   Helper for initializing the "REST" heap for medium-sized objects
