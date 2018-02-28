@@ -318,6 +318,7 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 gc_heap *gc_heap_free(gc_heap *page, gc_heap *prev_page);
 void gc_heap_merge(gc_heap *hdest, gc_heap *hsrc);
 void gc_merge_all_heaps(gc_thread_data *dest, gc_thread_data *src);
+int gc_is_heap_empty(gc_heap *h);
 void gc_print_stats(gc_heap * h);
 int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size, gc_thread_data *thd);
 char *gc_copy_obj(object hp, char *obj, gc_thread_data * thd);
