@@ -1442,8 +1442,13 @@ void gc_collector_sweep()
     for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
       h = m->heap->heap[heap_type];
       if (h) {
-        gc_sweep(h, heap_type, &freed_tmp, m);
-        freed += freed_tmp;
+        if (heap_type < 3) { // Fixed size
+          gc_sweep_fixed_size(h, heap_type, &freed_tmp, m);
+          freed += freed_tmp;
+        } else {
+          gc_sweep(h, heap_type, &freed_tmp, m);
+          freed += freed_tmp;
+        }
       }
     }
 
