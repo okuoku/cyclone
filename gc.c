@@ -491,6 +491,7 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
       size_t remaining = h->size - (h->size % h->block_size); // - h->block_size; // Remove first one??
       char *data_end = h->data + remaining;
       q = h->free_list;
+gc_print_fixed_size_free_list(h);
       while (remaining) {
         p = data_end - remaining;
         // find preceding/succeeding free list pointers for p
