@@ -557,12 +557,18 @@ gc_print_fixed_size_free_list(h);
             q = h->free_list = p;
             h->free_list->next = NULL;
             printf("sweep reclaimed remaining=%d, %p, assign h->free_list\n", remaining, p);
-          } else if ((char *)p < (char *)h->free_list) {
-            // p is before the free list, prepend it as the start
-            s = (gc_free_list *)p;
-            s->next = h->free_list;
-            q = h->free_list = p;
-            printf("sweep reclaimed remaining=%d, %p, assign h->free_list which was %p\n", remaining, p, h->free_list);
+TODO: two problems:
+- what if p is before q, what do we do? do we need to handle that above? completely
+rethink everything? maybe we reserve q as the first block in data just like for the
+standard heap's free lists, just to simplify everything
+- still have that fucking crash, not sure if it is related to these sweep problems or not...
+// TODO: don't think this could ever happen? q is assigned to h->free_list so below case should handle it
+//          } else if ((char *)p < (char *)h->free_list) {
+//            // p is before the free list, prepend it as the start
+//            s = (gc_free_list *)p;
+//            s->next = h->free_list;
+//            q = h->free_list = p;
+//            printf("sweep reclaimed remaining=%d, %p, assign h->free_list which was %p\n", remaining, p, h->free_list);
           } else {
             s = (gc_free_list *)p;
             s->next = r;
