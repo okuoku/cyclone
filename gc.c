@@ -305,6 +305,9 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   fprintf(stderr, ("free1: %p-%p free2: %p-%p\n"), free,
           ((char *)free) + free->size, next, ((char *)next) + next->size);
 #endif
+  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  // TODO: need to modify this check here (and elsewhere) for 32-bit platforms
+  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   if (heap_type < 3) { // Fixed size
     h->block_size = (heap_type + 1) * 32;
     //h->remaining = size - (size % h->block_size);
@@ -490,9 +493,13 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
       q = h->free_list;
       while (remaining) {
         p = data_end - remaining;
-  #if GC_SAFETY_CHECKS
+//  #if GC_SAFETY_CHECKS
         if (!is_object_type(p)) {
           fprintf(stderr, "sweep: invalid object at %p", p);
+          exit(1);
+        }
+        if (type_of(p) > 20) {
+          fprintf(stderr, "sweep: invalid object tag %d at %p", type_of(p), p);
           exit(1);
         }
   //      if ((char *)q + h->block_size > (char *)p) {
@@ -503,7 +510,7 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
   //        fprintf(stderr, "sweep: bad size at %p + %zu > %p", p, size, r);
   //        exit(1);
   //      }
-  #endif
+//  #endif
         if (mark(p) == gc_color_clear) {
   #if GC_DEBUG_VERBOSE
           fprintf(stderr, "sweep is freeing unmarked obj: %p with tag %d\n", p,
