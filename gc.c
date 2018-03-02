@@ -307,9 +307,12 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
 #endif
   if (heap_type < 3) { // Fixed size
     h->block_size = (heap_type + 1) * 32;
-    h->remaining = size - (size % h->block_size);
-    h->data_end = h->data + h->remaining;
-    h->free_list = NULL; // No free lists with bump&pop
+    //h->remaining = size - (size % h->block_size);
+    //h->data_end = h->data + h->remaining;
+    //h->free_list = NULL; // No free lists with bump&pop
+    h->remaining = 0;
+    h->data_end = NULL;
+    gc_init_fixed_size_free_list(h);
   } else {
     h->block_size = 0;
     h->remaining = 0;
@@ -1081,7 +1084,7 @@ void *gc_try_alloc_fixed_size(gc_heap * h, int heap_type, size_t size, char *obj
   pthread_mutex_lock(&(thd->heap_lock));
   h = h->next_free;
 
-  for (; h; h_passed->next_free = h = h->next) {      // All heaps
+  for (; h; h_passed->next_free = h->next ? h->next : h, h = h->next) {      // All heaps
     if (h->free_list) {
       result = h->free_list;
       h->free_list = h->free_list->next;
