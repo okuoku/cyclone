@@ -334,7 +334,7 @@ void gc_init_fixed_size_free_list(gc_heap *h)
   // for this flavor, just layer a free list on top of unitialized memory
   gc_free_list *next;
   //int i = 0;
-  int remaining = h->size - (h->size % h->block_size) - h->block_size; // Starting at first one so skip it
+  size_t remaining = h->size - (h->size % h->block_size) - h->block_size; // Starting at first one so skip it
   next = h->free_list = (gc_free_list *)h->data;
   //printf("data start = %p\n", h->data);
   //printf("data end = %p\n", h->data + h->size);
@@ -460,7 +460,7 @@ size_t gc_convert_heap_page_to_free_list(gc_heap *h)
  */
 void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_data *thd)
 {
-  size_t heap_freed = 0, sum_freed = 0, size;
+  size_t heap_freed = 0, sum_freed = 0;
   object p;
   gc_free_list *q, *r, *s;
 #if GC_DEBUG_SHOW_SWEEP_DIAG
@@ -488,7 +488,7 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
       heap_freed = gc_convert_heap_page_to_free_list(h);
     } else {
       //gc_free_list *next;
-      int remaining = h->size - (h->size % h->block_size); // - h->block_size; // Remove first one??
+      size_t remaining = h->size - (h->size % h->block_size); // - h->block_size; // Remove first one??
       char *data_end = h->data + remaining;
       q = h->free_list;
       while (remaining) {
@@ -496,7 +496,7 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
         // find preceding/succeeding free list pointers for p
         for (r = (q?q->next:NULL); r && ((char *)r < (char *)p); q = r, r = r->next) ;
         if ((char *)q == (char *)p || (char *)r == (char *)p) {     // this is a free block, skip it
-          //printf("Sweep skip free block %p\n", p);
+          printf("Sweep skip free block %p remaining=%lu\n", p, remaining);
           remaining -= h->block_size;
           continue;
         }
@@ -550,24 +550,24 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
           }
 
           // free p
-          heap_freed += size;
-        if (h->free_list == NULL) {
-          // No free list, start one at p
-          q = h->free_list = p;
-          h->free_list->next = NULL;
-         // printf("sweep reclaimed remaining=%d, %p, assign h->free_list\n", remaining, p);
-        } else if ((char *)p < (char *)h->free_list) {
-          // p is before the free list, prepend it as the start
-          s = (gc_free_list *)p;
-          s->next = h->free_list;
-          q = h->free_list = p;
-          //printf("sweep reclaimed remaining=%d, %p, assign h->free_list and next\n", remaining, p);
-        } else {
-          s = (gc_free_list *)p;
-          s->next = r;
-          q->next = s;
-          //printf("sweep reclaimed remaining=%d, %p, q=%p, r=%p\n", remaining, p, q, r);
-        }
+          heap_freed += h->block_size;
+          if (h->free_list == NULL) {
+            // No free list, start one at p
+            q = h->free_list = p;
+            h->free_list->next = NULL;
+            printf("sweep reclaimed remaining=%d, %p, assign h->free_list\n", remaining, p);
+          } else if ((char *)p < (char *)h->free_list) {
+            // p is before the free list, prepend it as the start
+            s = (gc_free_list *)p;
+            s->next = h->free_list;
+            q = h->free_list = p;
+            printf("sweep reclaimed remaining=%d, %p, assign h->free_list which was %p\n", remaining, p, h->free_list);
+          } else {
+            s = (gc_free_list *)p;
+            s->next = r;
+            q->next = s;
+            printf("sweep reclaimed remaining=%d, %p, q=%p, r=%p\n", remaining, p, q, r);
+          }
 
         } else {
           //printf("sweep block is still used remaining=%d p = %p\n", remaining, p);

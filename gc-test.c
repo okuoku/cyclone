@@ -178,7 +178,7 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
   for (; h; prev_h = h, h = h->next) {      // All heaps
 
     //gc_free_list *next;
-    int remaining = h->size - (h->size % h->block_size); // - h->block_size; // Remove first one??
+    size_t remaining = h->size - (h->size % h->block_size); // - h->block_size; // Remove first one??
     char *data_end = h->data + remaining;
     q = h->free_list;
 //TODO: not good enough, do not assume all blocks are full! Should be able to use free lists to figure out which ones are unoccupied
