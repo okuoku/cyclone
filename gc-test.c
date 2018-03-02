@@ -155,6 +155,7 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
 {
   size_t freed, heap_freed = 0, sum_freed = 0, size;
   object p, end;
+ // gc_free_list tmp;
   gc_free_list *q, *r, *s;
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   gc_heap *orig_heap_ptr = h;
@@ -180,30 +181,44 @@ void my_gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_d
     int remaining = h->size - (h->size % h->block_size); // - h->block_size; // Remove first one??
     char *data_end = h->data + remaining;
     q = h->free_list;
+//TODO: not good enough, do not assume all blocks are full! Should be able to use free lists to figure out which ones are unoccupied
     while (remaining) {
       p = data_end - remaining;
-      if (mark(p) == TEST_COLOR_CLEAR) {
-        if (h->free_list == NULL) {
-          q = h->free_list = p;
-          h->free_list->next = NULL;
-          printf("sweep remaining=%d, %p, assign h->free_list\n", remaining, p);
-        } else if ((char *)p <= (char *)h->free_list) {
-          s = (gc_free_list *)p;
-          s->next = h->free_list->next;
-          q = h->free_list = p;
-          printf("sweep remaining=%d, %p, assign h->free_list and next\n", remaining, p);
-        } else {
           // find preceding/succeeding free list pointers for p
-          for (r = q->next; r && ((char *)r < (char *)p); q = r, r = r->next) ;
-          if ((char *)r == (char *)p) {     // this is a free block, skip it
+          for (r = (q?q->next:NULL); r && ((char *)r < (char *)p); q = r, r = r->next) ;
+          if ((char *)q == (char *)p || (char *)r == (char *)p) {     // this is a free block, skip it
+            printf("Sweep skip free block %p\n", p);
+            remaining -= h->block_size;
             continue;
           }
+// GC SAFETY CHECKS
+        if (!is_object_type(p)) {
+          fprintf(stderr, "sweep: invalid object at %p", p);
+          exit(1);
+        }
+        if (type_of(p) > 20) {
+          fprintf(stderr, "sweep: invalid object tag %d at %p", type_of(p), p);
+          exit(1);
+        }
+// GC SAFETY CHECKS
+      if (mark(p) == TEST_COLOR_CLEAR) {
+        if (h->free_list == NULL) {
+          // No free list, start one at p
+          q = h->free_list = p;
+          h->free_list->next = NULL;
+          printf("sweep reclaimed remaining=%d, %p, assign h->free_list\n", remaining, p);
+        } else if ((char *)p < (char *)h->free_list) {
+          // p is before the free list, prepend it as the start
+          s = (gc_free_list *)p;
+          s->next = h->free_list;
+          q = h->free_list = p;
+          printf("sweep reclaimed remaining=%d, %p, assign h->free_list and next\n", remaining, p);
+        } else {
           s = (gc_free_list *)p;
           s->next = r;
           q->next = s;
-          printf("sweep remaining=%d, %p, q=%p, r=%p\n", remaining, p, q, r);
+          printf("sweep reclaimed remaining=%d, %p, q=%p, r=%p\n", remaining, p, q, r);
         }
-
       } else {
         printf("sweep block is still used remaining=%d p = %p\n", remaining, p);
       }
@@ -476,4 +491,7 @@ void main(){
   }
   my_gc_sweep(h, 0, &tmpsz, NULL);
   print_free_list(h);
+  // TODO: hangs, wtf??
+  my_gc_sweep(h, 0, &tmpsz, NULL);
+  //print_free_list(h);
 }
