@@ -480,8 +480,11 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
   fprintf(stderr, "Heap %d diagnostics:\n", heap_type);
   gc_print_stats(orig_heap_ptr);
 #endif
-
   for (; h; prev_h = h, h = h->next) {      // All heaps
+
+// TODO: temporarily just print free list, seems it is getting corrupted somehow
+gc_print_fixed_size_free_list(h);
+continue;
 
     if (h->data_end != NULL) {
       // Special case, bump&pop heap
@@ -491,7 +494,6 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
       size_t remaining = h->size - (h->size % h->block_size); // - h->block_size; // Remove first one??
       char *data_end = h->data + remaining;
       q = h->free_list;
-gc_print_fixed_size_free_list(h);
       while (remaining) {
         p = data_end - remaining;
         // find preceding/succeeding free list pointers for p
