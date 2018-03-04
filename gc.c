@@ -557,11 +557,11 @@ gc_print_fixed_size_free_list(h);
             q = h->free_list = p;
             h->free_list->next = NULL;
             printf("sweep reclaimed remaining=%d, %p, assign h->free_list\n", remaining, p);
-TODO: two problems:
-- what if p is before q, what do we do? do we need to handle that above? completely
-rethink everything? maybe we reserve q as the first block in data just like for the
-standard heap's free lists, just to simplify everything
-- still have that fucking crash, not sure if it is related to these sweep problems or not...
+// TODO: two problems:
+// - what if p is before q, what do we do? do we need to handle that above? completely
+// rethink everything? maybe we reserve q as the first block in data just like for the
+// standard heap's free lists, just to simplify everything
+// - still have that fucking crash, not sure if it is related to these sweep problems or not...
 // TODO: don't think this could ever happen? q is assigned to h->free_list so below case should handle it
 //          } else if ((char *)p < (char *)h->free_list) {
 //            // p is before the free list, prepend it as the start
@@ -1102,7 +1102,7 @@ void *gc_try_alloc_fixed_size(gc_heap * h, int heap_type, size_t size, char *obj
   pthread_mutex_lock(&(thd->heap_lock));
   h = h->next_free;
 
-  for (; h; h_passed->next_free = h->next ? h->next : h, h = h->next) {      // All heaps
+  for (; h; h = h->next) {      // All heaps
     if (h->free_list) {
       result = h->free_list;
       h->free_list = h->free_list->next;
@@ -1123,7 +1123,8 @@ void *gc_try_alloc_fixed_size(gc_heap * h, int heap_type, size_t size, char *obj
       #endif
       gc_copy_obj(result, obj, thd);
       ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
-    
+
+      h_passed->next_free = h;
       pthread_mutex_unlock(&(thd->heap_lock));
       return result;
     }
