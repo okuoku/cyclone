@@ -472,7 +472,7 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
   // Lock the heap to prevent issues with allocations during sweep
   // This coarse-grained lock actually performed better than a fine-grained one.
   //
-//  pthread_mutex_lock(&(thd->heap_lock));
+  pthread_mutex_lock(&(thd->heap_lock));
   h->next_free = h;
 
 #if GC_DEBUG_SHOW_SWEEP_DIAG
@@ -622,7 +622,7 @@ continue;
   gc_print_stats(orig_heap_ptr);
 #endif
 
-//  pthread_mutex_unlock(&(thd->heap_lock));
+  pthread_mutex_unlock(&(thd->heap_lock));
   if (sum_freed_ptr)
     *sum_freed_ptr = sum_freed;
 }
