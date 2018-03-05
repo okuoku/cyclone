@@ -482,10 +482,6 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
 #endif
   for (; h; prev_h = h, h = h->next) {      // All heaps
 
-// TODO: temporarily just print free list, seems it is getting corrupted somehow
-gc_print_fixed_size_free_list(h);
-continue;
-
     if (h->data_end != NULL) {
       // Special case, bump&pop heap
       heap_freed = gc_convert_heap_page_to_free_list(h);
@@ -499,7 +495,7 @@ continue;
         // find preceding/succeeding free list pointers for p
         for (r = (q?q->next:NULL); r && ((char *)r < (char *)p); q = r, r = r->next) ;
         if ((char *)q == (char *)p || (char *)r == (char *)p) {     // this is a free block, skip it
-          printf("Sweep skip free block %p remaining=%lu\n", p, remaining);
+          //printf("Sweep skip free block %p remaining=%lu\n", p, remaining);
           remaining -= h->block_size;
           continue;
         }
@@ -558,24 +554,21 @@ continue;
             // No free list, start one at p
             q = h->free_list = p;
             h->free_list->next = NULL;
-            printf("sweep reclaimed remaining=%d, %p, assign h->free_list\n", remaining, p);
-// TODO: two problems:
-// - what if p is before q, what do we do? do we need to handle that above? completely
-// rethink everything? maybe we reserve q as the first block in data just like for the
-// standard heap's free lists, just to simplify everything
-// - still have that fucking crash, not sure if it is related to these sweep problems or not...
-// TODO: don't think this could ever happen? q is assigned to h->free_list so below case should handle it
-//          } else if ((char *)p < (char *)h->free_list) {
-//            // p is before the free list, prepend it as the start
-//            s = (gc_free_list *)p;
-//            s->next = h->free_list;
-//            q = h->free_list = p;
-//            printf("sweep reclaimed remaining=%d, %p, assign h->free_list which was %p\n", remaining, p, h->free_list);
+            //printf("sweep reclaimed remaining=%d, %p, assign h->free_list\n", remaining, p);
+          } else if ((char *)p < (char *)h->free_list) {
+            // p is before the free list, prepend it as the start
+            // note if this is the case, either there is no free_list (see above case) or 
+            // the free list is after p, which is handled now. these are the only situations
+            // where there is no q
+            s = (gc_free_list *)p;
+            s->next = h->free_list;
+            q = h->free_list = p;
+            //printf("sweep reclaimed remaining=%d, %p, assign h->free_list which was %p\n", remaining, p, h->free_list);
           } else {
             s = (gc_free_list *)p;
             s->next = r;
             q->next = s;
-            printf("sweep reclaimed remaining=%d, %p, q=%p, r=%p\n", remaining, p, q, r);
+            //printf("sweep reclaimed remaining=%d, %p, q=%p, r=%p\n", remaining, p, q, r);
           }
 
         } else {
