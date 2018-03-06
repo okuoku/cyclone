@@ -462,6 +462,7 @@ size_t gc_convert_heap_page_to_free_list(gc_heap *h)
 void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_data *thd)
 {
   size_t heap_freed = 0, sum_freed = 0;
+  short heap_is_empty;
   object p;
   gc_free_list *q, *r, *s;
 #if GC_DEBUG_SHOW_SWEEP_DIAG
@@ -486,10 +487,12 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
     if (h->data_end != NULL) {
       // Special case, bump&pop heap
       heap_freed = gc_convert_heap_page_to_free_list(h);
+      heap_is_empty = 0; // For now, don't try to free bump&pop
     } else {
       //gc_free_list *next;
       size_t remaining = h->size - (h->size % h->block_size); // - h->block_size; // Remove first one??
       char *data_end = h->data + remaining;
+      heap_is_empty = 1; // Base case is an empty heap
       q = h->free_list;
       while (remaining) {
         p = data_end - remaining;
@@ -578,6 +581,7 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
         //next->next = (gc_free_list *)(((char *) next) + h->block_size);
         //next = next->next;
         remaining -= h->block_size;
+        heap_is_empty = 0;
       }
     }
 
@@ -596,8 +600,12 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
     // remaining without them.
     //
     // Experimenting with only freeing huge heaps
-    if (gc_is_heap_empty(h) && 
-          (h->type == HEAP_HUGE || !(h->ttl--))) {
+
+//if (heap_is_empty) {
+//  printf("heap %d %p is empty\n", h->type, h);
+//}
+
+    if (heap_is_empty && !(h->ttl--)) {
         unsigned int h_size = h->size;
         gc_heap *new_h = gc_heap_free(h, prev_h);
         if (new_h) { // Ensure free succeeded
@@ -672,14 +680,14 @@ gc_heap *gc_heap_free(gc_heap *page, gc_heap *prev_page)
 }
 
 /**
- * @brief Determine if a heap page is empty
+ * @brief Determine if a heap page is empty.
+ *        Note this only works for heaps that are not fixed-size.
  * @param h Heap to inspect. The caller should acquire the necessary lock
  *            on this heap.
  * @return A truthy value if the heap is empty, 0 otherwise.
  */
 int gc_is_heap_empty(gc_heap *h) 
 {
-  TODO: this does not take bump and pop or fixed-size free lists into account
   gc_free_list *f;
   if (!h || !h->free_list) return 0;
 
