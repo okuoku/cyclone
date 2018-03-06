@@ -310,12 +310,13 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   if (heap_type < 3) { // Fixed size
     h->block_size = (heap_type + 1) * 32;
-    //h->remaining = size - (size % h->block_size);
-    //h->data_end = h->data + h->remaining;
-    //h->free_list = NULL; // No free lists with bump&pop
-    h->remaining = 0;
-    h->data_end = NULL;
-    gc_init_fixed_size_free_list(h);
+//
+    h->remaining = size - (size % h->block_size);
+    h->data_end = h->data + h->remaining;
+    h->free_list = NULL; // No free lists with bump&pop
+//    h->remaining = 0;
+//    h->data_end = NULL;
+//    gc_init_fixed_size_free_list(h);
   } else {
     h->block_size = 0;
     h->remaining = 0;
@@ -430,7 +431,7 @@ size_t gc_convert_heap_page_to_free_list(gc_heap *h)
       next = h->free_list = p;
     }
     else {
-      next->next = (gc_free_list *)(((char *) next) + h->block_size);
+      next->next = p; //(gc_free_list *)(((char *) next) + h->block_size);
       next = next->next;
     }
     remaining -= h->block_size;
@@ -678,6 +679,7 @@ gc_heap *gc_heap_free(gc_heap *page, gc_heap *prev_page)
  */
 int gc_is_heap_empty(gc_heap *h) 
 {
+  TODO: this does not take bump and pop or fixed-size free lists into account
   gc_free_list *f;
   if (!h || !h->free_list) return 0;
 
