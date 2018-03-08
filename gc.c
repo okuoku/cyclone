@@ -42,12 +42,6 @@
 //#define gc_word_align(n) gc_align((n), 2)
 #define gc_heap_align(n) gc_align(n, GC_BLOCK_BITS)
 
-#if INTPTR_MAX == INT64_MAX
-  #define REST_HEAP_MIN_SIZE 128
-#else
-  #define REST_HEAP_MIN_SIZE 96
-#endif
-
 ////////////////////
 // Global variables
 
@@ -1398,15 +1392,6 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
   pthread_mutex_lock(&(thd->heap_lock));
   h->next_free = h;
   h->last_alloc_size = 0;
-
-  //if (heap_type == HEAP_REST) {
-  //  int i;
-  //  size_t chunk_size = REST_HEAP_MIN_SIZE;
-  //  for (i = 0; i < 3; i++) {
-  //    h->next_frees[i] = gc_find_heap_with_chunk_size(h, chunk_size);
-  //    chunk_size += 32;
-  //  }
-  //}
 
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   fprintf(stderr, "\nBefore sweep -------------------------\n");
