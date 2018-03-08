@@ -305,9 +305,6 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   fprintf(stderr, ("free1: %p-%p free2: %p-%p\n"), free,
           ((char *)free) + free->size, next, ((char *)next) + next->size);
 #endif
-  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  // TODO: need to modify this check here (and elsewhere) for 32-bit platforms
-  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   if (heap_type <= LAST_FIXED_SIZE_HEAP_TYPE) {
     h->block_size = (heap_type + 1) * 32;
 //
