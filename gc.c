@@ -461,11 +461,6 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
 #endif
   gc_heap *prev_h = NULL;
 
-  //
-  // Lock the heap to prevent issues with allocations during sweep
-  // This coarse-grained lock actually performed better than a fine-grained one.
-  //
-  pthread_mutex_lock(&(thd->heap_lock));
   h->next_free = h;
 
 #if GC_DEBUG_SHOW_SWEEP_DIAG
@@ -615,7 +610,6 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
   gc_print_stats(orig_heap_ptr);
 #endif
 
-  pthread_mutex_unlock(&(thd->heap_lock));
   if (sum_freed_ptr)
     *sum_freed_ptr = sum_freed;
 }
@@ -894,7 +888,7 @@ int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size, gc_
 {
   size_t /*cur_size,*/ new_size;
   gc_heap *h_last = h, *h_new;
-  pthread_mutex_lock(&(thd->heap_lock));
+  //pthread_mutex_lock(&(thd->heap_lock));
   // Compute size of new heap page
   if (heap_type == HEAP_HUGE) {
     new_size = gc_heap_align(size) + 128;
@@ -937,7 +931,7 @@ int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size, gc_
   // Done with computing new page size
   h_new = gc_heap_create(heap_type, new_size, h_last->max_size, chunk_size, thd);
   h_last->next = h_new;
-  pthread_mutex_unlock(&(thd->heap_lock));
+  //pthread_mutex_unlock(&(thd->heap_lock));
 #if GC_DEBUG_TRACE
   fprintf(stderr, "DEBUG - grew heap\n");
 #endif
@@ -961,7 +955,6 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
 {
   gc_heap *h_passed = h;
   gc_free_list *f1, *f2, *f3;
-  pthread_mutex_lock(&(thd->heap_lock));
   // Start searching from the last heap page we had a successful
   // allocation from, unless the current request is for a smaller
   // block in which case there may be available memory closer to
@@ -1011,12 +1004,10 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
         }
         h_passed->next_free = h;
         h_passed->last_alloc_size = size;
-        pthread_mutex_unlock(&(thd->heap_lock));
         return f2;
       }
     }
   }
-  pthread_mutex_unlock(&(thd->heap_lock));
   return NULL;
 }
 
@@ -1036,7 +1027,6 @@ void *gc_try_alloc_fixed_size(gc_heap * h, int heap_type, size_t size, char *obj
 {
   void *result;
   gc_heap *h_passed = h;
-  pthread_mutex_lock(&(thd->heap_lock));
   h = h->next_free;
 
   for (; h; h = h->next) {      // All heaps
@@ -1062,11 +1052,9 @@ void *gc_try_alloc_fixed_size(gc_heap * h, int heap_type, size_t size, char *obj
       ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
 
       h_passed->next_free = h;
-      pthread_mutex_unlock(&(thd->heap_lock));
       return result;
     }
   }
-  pthread_mutex_unlock(&(thd->heap_lock));
   return NULL;
 }
 
@@ -1122,6 +1110,7 @@ void *gc_alloc_from_bignum(gc_thread_data *data, bignum_type *src)
 void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
                int *heap_grown)
 {
+TODO: let's rework this side for lazy sweep, then figure out coloring and collector sides next
   void *result = NULL;
   gc_heap *h = NULL;
   int heap_type;
@@ -1164,9 +1153,7 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
     if (!result) {
       fprintf(stderr, "out of memory error allocating %zu bytes\n", size);
       fprintf(stderr, "Heap type %d diagnostics:\n", heap_type);
-      pthread_mutex_lock(&(thd->heap_lock));
       gc_print_stats(h);
-      pthread_mutex_unlock(&(thd->heap_lock)); /* why not */
       exit(1);                  /* could throw error, but OOM is a major issue, so... */
     }
   }
@@ -1265,30 +1252,6 @@ gc_heap *gc_heap_last(gc_heap * h)
   return h;
 }
 
-//size_t gc_heap_total_size(gc_heap * h)
-//{
-//  size_t total_size = 0;
-//  pthread_mutex_lock(&heap_lock);
-//  while (h) {
-//    total_size += h->size;
-//    h = h->next;
-//  }
-//  pthread_mutex_unlock(&heap_lock);
-//  return total_size;
-//}
-//
-//size_t gc_heap_total_free_size(gc_heap *h)
-//{
-//  size_t total_size = 0;
-//  pthread_mutex_lock(&heap_lock);
-//  while(h) {
-//    total_size += h->free_size;
-//    h = h->next;
-//  }
-//  pthread_mutex_unlock(&heap_lock);
-//  return total_size;
-//}
-
 /**
  * @brief A convenient front-end to the actual gc_sweep function.
  */
@@ -1306,56 +1269,60 @@ void gc_collector_sweep()
 #endif
 
   CK_ARRAY_FOREACH(&Cyc_mutators, &iterator, &m) {
-    for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
-      h = m->heap->heap[heap_type];
-      if (h) {
-        if (heap_type <= LAST_FIXED_SIZE_HEAP_TYPE) {
-          gc_sweep_fixed_size(h, heap_type, &freed_tmp, m);
-          freed += freed_tmp;
-        } else {
-          gc_sweep(h, heap_type, &freed_tmp, m);
-          freed += freed_tmp;
-        }
-      }
-    }
 
-    // TODO: this loop only includes smallest 2 heaps, is that sufficient??
-    for (heap_type = 0; heap_type < 2; heap_type++) {
-      while ( ck_pr_load_ptr(&(m->cached_heap_free_sizes[heap_type])) <
-             (ck_pr_load_ptr(&(m->cached_heap_total_sizes[heap_type])) * GC_FREE_THRESHOLD)) {
-#if GC_DEBUG_TRACE
-        fprintf(stderr, "Less than %f%% of the heap %d is free, growing it\n",
-                100.0 * GC_FREE_THRESHOLD, heap_type);
-#endif
-        if (heap_type == HEAP_SM) {
-          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
-        } else if (heap_type == HEAP_64) {
-          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
-        } else if (heap_type == HEAP_REST) {
-          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
-        }
-      }
-    }
+// TODO: what to update in each heap? probably want to reset back to first heap in each mutator
+// may also need to set other things, clear color?
+
+//    for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
+//      h = m->heap->heap[heap_type];
+//      if (h) {
+//        if (heap_type <= LAST_FIXED_SIZE_HEAP_TYPE) {
+//          gc_sweep_fixed_size(h, heap_type, &freed_tmp, m);
+//          freed += freed_tmp;
+//        } else {
+//          gc_sweep(h, heap_type, &freed_tmp, m);
+//          freed += freed_tmp;
+//        }
+//      }
+//    }
+//
+//    // TODO: this loop only includes smallest 2 heaps, is that sufficient??
+//    for (heap_type = 0; heap_type < 2; heap_type++) {
+//      while ( ck_pr_load_ptr(&(m->cached_heap_free_sizes[heap_type])) <
+//             (ck_pr_load_ptr(&(m->cached_heap_total_sizes[heap_type])) * GC_FREE_THRESHOLD)) {
+//#if GC_DEBUG_TRACE
+//        fprintf(stderr, "Less than %f%% of the heap %d is free, growing it\n",
+//                100.0 * GC_FREE_THRESHOLD, heap_type);
+//#endif
+//        if (heap_type == HEAP_SM) {
+//          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
+//        } else if (heap_type == HEAP_64) {
+//          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
+//        } else if (heap_type == HEAP_REST) {
+//          gc_grow_heap(m->heap->heap[heap_type], heap_type, 0, 0, m);
+//        }
+//      }
+//    }
     // Clear allocation counts to delay next GC trigger
     ck_pr_store_int(&(m->heap_num_huge_allocations), 0); 
-#if GC_DEBUG_TRACE
-    total_size = ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_SM])) +
-                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_64])) + 
-#if INTPTR_MAX == INT64_MAX
-                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_96])) + 
-#endif
-                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_REST]));
-    total_free = ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_SM])) +
-                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_64])) + 
-#if INTPTR_MAX == INT64_MAX
-                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_96])) + 
-#endif
-                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_REST]));
-    fprintf(stderr,
-            "sweep done, total_size = %zu, total_free = %zu, freed = %zu, elapsed = %ld\n",
-            total_size, total_free, freed,
-            (time(NULL) - gc_collector_start));
-#endif
+//#if GC_DEBUG_TRACE
+//    total_size = ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_SM])) +
+//                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_64])) + 
+//#if INTPTR_MAX == INT64_MAX
+//                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_96])) + 
+//#endif
+//                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_REST]));
+//    total_free = ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_SM])) +
+//                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_64])) + 
+//#if INTPTR_MAX == INT64_MAX
+//                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_96])) + 
+//#endif
+//                 ck_pr_load_ptr(&(m->cached_heap_free_sizes[HEAP_REST]));
+//    fprintf(stderr,
+//            "sweep done, total_size = %zu, total_free = %zu, freed = %zu, elapsed = %ld\n",
+//            total_size, total_free, freed,
+//            (time(NULL) - gc_collector_start));
+//#endif
   }
 #if GC_DEBUG_TRACE
   fprintf(stderr, "all thread heap sweeps done\n");
@@ -1385,11 +1352,6 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
 #endif
   gc_heap *prev_h = NULL;
 
-  //
-  // Lock the heap to prevent issues with allocations during sweep
-  // This coarse-grained lock actually performed better than a fine-grained one.
-  //
-  pthread_mutex_lock(&(thd->heap_lock));
   h->next_free = h;
   h->last_alloc_size = 0;
 
@@ -1539,7 +1501,6 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
   gc_print_stats(orig_heap_ptr);
 #endif
 
-  pthread_mutex_unlock(&(thd->heap_lock));
   if (sum_freed_ptr)
     *sum_freed_ptr = sum_freed;
   return max_freed;
@@ -2373,10 +2334,6 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
   thd->mark_buffer_len = 128;
   thd->mark_buffer =
       vpbuffer_realloc(thd->mark_buffer, &(thd->mark_buffer_len));
-  if (pthread_mutex_init(&(thd->heap_lock), NULL) != 0) {
-    fprintf(stderr, "Unable to initialize thread mutex\n");
-    exit(1);
-  }
   if (pthread_mutex_init(&(thd->lock), NULL) != 0) {
     fprintf(stderr, "Unable to initialize thread mutex\n");
     exit(1);
@@ -2408,19 +2365,18 @@ void gc_thread_data_free(gc_thread_data * thd)
       fprintf(stderr, "Thread mutex is locked, unable to free\n");
       exit(1);
     }
-    if (pthread_mutex_destroy(&thd->heap_lock) != 0) {
-      fprintf(stderr, "Thread heap mutex is locked, unable to free\n");
-      exit(1);
-    }
     // Merge heaps for the terminating thread into the main thread's heap.
     // Eventually any data that is unused will be freed, but we need to
     // keep the heap pages for now because they could still contain live 
     // objects.
     // Lock the primordial thread (hopefully will not cause any deadlocks)
     // but don't bother locking thd since it is already done by now.
-    pthread_mutex_lock(&(primordial_thread->heap_lock));
+
+// TODO: need to figure out a new solution since we no longer have the heap lock!!!!
+
+//    pthread_mutex_lock(&(primordial_thread->heap_lock));
     gc_merge_all_heaps(primordial_thread, thd);
-    pthread_mutex_unlock(&(primordial_thread->heap_lock));
+//    pthread_mutex_unlock(&(primordial_thread->heap_lock));
     if (thd->cached_heap_free_sizes)
       free(thd->cached_heap_free_sizes);
     if (thd->cached_heap_total_sizes)

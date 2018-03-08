@@ -300,7 +300,6 @@ struct gc_thread_data_t {
   void **mark_buffer;
   int mark_buffer_len;
   pthread_mutex_t lock;
-  pthread_mutex_t heap_lock;
   pthread_t thread_id;
   gc_heap_root *heap;
   uintptr_t *cached_heap_free_sizes;
