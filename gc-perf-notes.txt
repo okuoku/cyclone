@@ -1,0 +1,4 @@
+gc-perf2-dev
+Contains special allocation and sweep code for heaps of fixed-length objects. This code creates some minor allocation speed improvements but unfortunately shifts more work to the sweep code, evening itself out. I suspect it would do better if we could efficiently use heap "pages" small enough that they would become empty on a regular basis. That way we could use bump allocation.
+
+
