@@ -47,8 +47,8 @@
 
 // Note: will need to use atomics and/or locking to access any
 // variables shared between threads
-static int gc_color_mark = 1;   // Black, is swapped during GC
-static int gc_color_clear = 3;  // White, is swapped during GC
+static unsigned gc_color_mark = 1;   // Black, is swapped during GC
+static unsigned gc_color_clear = 3;  // White, is swapped during GC
 // unfortunately this had to be split up; const colors are located in types.h
 
 static int gc_status_col = STATUS_SYNC1;
@@ -313,6 +313,9 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
     h->remaining = 0;
     h->data_end = NULL;
   }
+  // Lazy sweeping
+  h->alloc_status = ALLOC_STATUS_OK;
+  h->alloc_color = thd->gc_alloc_color;
   return h;
 }
 
@@ -953,29 +956,16 @@ int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size, gc_
 void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
                    gc_thread_data * thd)
 {
-  gc_heap *h_passed = h;
+//  gc_heap *h_passed = h;
   gc_free_list *f1, *f2, *f3;
   // Start searching from the last heap page we had a successful
   // allocation from, unless the current request is for a smaller
   // block in which case there may be available memory closer to
   // the start of the heap.
-  if (size >= h->last_alloc_size) {
-    h = h->next_free;
-  }
-  for (; h; h = h->next) {      // All heaps
-    // TODO: chunk size (ignoring for now)
-
-// TODO: is it worth creating a try_alloc_fixed for the fixed-size heaps? could remove a couple of
-// checks below, might speed things up a bit since try_alloc is called so often.
-// downsize is need to figure out how to call into it instead. could make the calling code in gc_alloc
-// a macro (with function name input) and call it 5 times. or use function pointers, but would that
-// generate slower code? could try both and see if it matters much one way or another
-
-// TODO: could we use bump&pop here to allocate directly from 
-// heap if remaining > 0?
-// - would need to initialize remaining such that it will decrement to 0 cleanly
-// - obviously b&p only applies to the fixed-size heaps
-// - can only b&p until heap fills up, so need to assess if it even helps much in our GC
+//  if (size >= h->last_alloc_size) {
+//    h = h->next_free;
+//  }
+//  for (; h; h = h->next) {      // All heaps
 
     for (f1 = h->free_list, f2 = f1->next; f2; f1 = f2, f2 = f2->next) {        // all free in this heap
       if (f2->size >= size) {   // Big enough for request
@@ -997,16 +987,44 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
           }
           #endif
           gc_copy_obj(f2, obj, thd);
-          //h->free_size -= gc_allocated_bytes(obj, NULL, NULL);
-          ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
+//          ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
         } else {
           ck_pr_add_int(&(thd->heap_num_huge_allocations), 1);
         }
-        h_passed->next_free = h;
-        h_passed->last_alloc_size = size;
+//        h_passed->next_free = h;
+//        h_passed->last_alloc_size = size;
         return f2;
       }
     }
+//  }
+  return NULL;
+}
+
+void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t size, char *obj, gc_thread_data *thd)
+{
+  gc_heap *h_start = h;
+  void *result = NULL;
+  // TODO:
+  // Find next heap
+  while (result == NULL) {
+    h = h->next;
+    if (h == NULL) {
+      h = h_passed;
+    }
+    if (h == h_start) {
+      // Tried all and no heap exists with free space
+      break;
+    }
+    // check allocation status to make sure we can use it
+    if (h->alloc_status == ALLOC_STATUS_LOCKED) {
+      continue;
+    } else if (h->alloc_status == ALLOC_STATUS_SWEEP) {
+      // TODO: sweep the heap
+      TODO: modify sweep to use h->alloc_color!!!!
+      size_t freed_tmp = 0;
+      gc_sweep(h, heap_type, &freed_tmp, thd);
+    }
+    result = gc_try_alloc(h, heap_type, size, obj, thd);
   }
   return NULL;
 }
@@ -1110,9 +1128,8 @@ void *gc_alloc_from_bignum(gc_thread_data *data, bignum_type *src)
 void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
                int *heap_grown)
 {
-TODO: let's rework this side for lazy sweep, then figure out coloring and collector sides next
   void *result = NULL;
-  gc_heap *h = NULL;
+  gc_heap *h_passed, *h = NULL;
   int heap_type;
   void *(*try_alloc)(gc_heap * h, int heap_type, size_t size, char *obj, gc_thread_data * thd);
   // TODO: check return value, if null (could not alloc) then 
@@ -1142,14 +1159,34 @@ TODO: let's rework this side for lazy sweep, then figure out coloring and collec
   }
 
   h = hrt->heap[heap_type];
+  h_passed = h;
+  if (size >= h->last_alloc_size) {
+    h = h->next_free;
+  }
+  // Fast path
   result = try_alloc(h, heap_type, size, obj, thd);
-  if (!result) {
+  if (result) {
+    h_passed->next_free = h;
+    h_passed->last_alloc_size = size;
+  } else {
+    // Slow path
+    result = gc_try_alloc_slow(h_passed, h, heap_type, size, obj, thd);
+    if (result) {
+      h_passed->next_free = h;
+      h_passed->last_alloc_size = size;
+    }
+
+    // Even slower path
     /* A vanilla mark&sweep collector would collect now, but unfortunately */
     /* we can't do that because we have to go through multiple stages, some */
     /* of which are asynchronous. So... no choice but to grow the heap. */
     gc_grow_heap(h, heap_type, size, 0, thd);
     *heap_grown = 1;
-    result = (*try_alloc)(h, heap_type, size, obj, thd);
+    //result = (*try_alloc)(h, heap_type, size, obj, thd);
+// TODO: would be nice if gc_grow_heap returns new page (maybe it does) then we can start from there
+// otherwise will be a bit of a bottleneck since with lazy sweeping there is no guarantee we are at 
+// the end of the heap anymore
+    result = gc_try_alloc_slow(h_passed, h, heap_type, size, obj, thd);
     if (!result) {
       fprintf(stderr, "out of memory error allocating %zu bytes\n", size);
       fprintf(stderr, "Heap type %d diagnostics:\n", heap_type);
@@ -1273,9 +1310,10 @@ void gc_collector_sweep()
 // TODO: what to update in each heap? probably want to reset back to first heap in each mutator
 // may also need to set other things, clear color?
 
-//    for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
-//      h = m->heap->heap[heap_type];
-//      if (h) {
+    for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
+      h = m->heap->heap[heap_type];
+      if (h) {
+        ck_pr_cas_char(&(h->allocate), ALLOC_STATUS_LOCKED, ALLOC_STATUS_SWEEP);
 //        if (heap_type <= LAST_FIXED_SIZE_HEAP_TYPE) {
 //          gc_sweep_fixed_size(h, heap_type, &freed_tmp, m);
 //          freed += freed_tmp;
@@ -1283,8 +1321,8 @@ void gc_collector_sweep()
 //          gc_sweep(h, heap_type, &freed_tmp, m);
 //          freed += freed_tmp;
 //        }
-//      }
-//    }
+      }
+    }
 //
 //    // TODO: this loop only includes smallest 2 heaps, is that sufficient??
 //    for (heap_type = 0; heap_type < 2; heap_type++) {
@@ -1396,7 +1434,7 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
       }
 #endif
 
-      if (mark(p) == gc_color_clear) {
+      if (mark(p) == thd->alloc_color) { //gc_color_clear) {
 #if GC_DEBUG_VERBOSE
         fprintf(stderr, "sweep is freeing unmarked obj: %p with tag %d\n", p,
                 type_of(p));

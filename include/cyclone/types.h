@@ -180,6 +180,12 @@ typedef enum {
 /** The number of `gc_heap_type`'s */
 #define NUM_HEAP_TYPES (HEAP_HUGE + 1)
 
+typedef enum { 
+    ALLOC_STATUS_OK = 0  // OK to allocate from
+  , ALLOC_STATUS_SWEEP   // Needs a sweep first
+  , ALLOC_STATUS_LOCKED  // Do not allocate from this heap
+} gc_heap_alloc_status;
+
 /** 
  * Linked list of free memory chunks on a heap page
  */
@@ -202,6 +208,9 @@ struct gc_heap_t {
   unsigned int remaining;
   unsigned block_size;
   char *data_end;
+  // Lazy-sweep related data
+  unsigned char alloc_status; // Able to allocate from this heap?
+  unsigned alloc_color; // Objects were allocated using this color
   //
   gc_heap *next_free;
   unsigned int last_alloc_size;
@@ -292,7 +301,7 @@ struct gc_thread_data_t {
   object *gc_args;
   short gc_num_args;
   // Data needed for heap GC
-  int gc_alloc_color;
+  unsigned gc_alloc_color;
   int gc_status;
   int last_write;
   int last_read;
@@ -332,6 +341,7 @@ int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size, gc_
 char *gc_copy_obj(object hp, char *obj, gc_thread_data * thd);
 void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
                    gc_thread_data * thd);
+void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t size, char *obj, gc_thread_data *thd);
 void *gc_alloc(gc_heap_root * h, size_t size, char *obj, gc_thread_data * thd,
                int *heap_grown);
 void *gc_alloc_bignum(gc_thread_data *data);
