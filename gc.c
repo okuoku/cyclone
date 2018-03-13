@@ -275,7 +275,6 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   h->next_free = h;
   h->next_frees = NULL;
   h->last_alloc_size = 0;
-  //h->free_size = size;
   ck_pr_add_ptr(&(thd->cached_heap_total_sizes[heap_type]), size);
   ck_pr_add_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
   h->chunk_size = chunk_size;
@@ -314,8 +313,8 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
     h->data_end = NULL;
   }
   // Lazy sweeping
-  h->alloc_status = ALLOC_STATUS_OK;
-  h->alloc_color = thd->gc_alloc_color;
+  h->free_size = size;
+  h->is_full = 0;
   return h;
 }
 
@@ -1313,7 +1312,6 @@ void gc_collector_sweep()
     for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
       h = m->heap->heap[heap_type];
       if (h) {
-        ck_pr_cas_char(&(h->allocate), ALLOC_STATUS_LOCKED, ALLOC_STATUS_SWEEP);
 //        if (heap_type <= LAST_FIXED_SIZE_HEAP_TYPE) {
 //          gc_sweep_fixed_size(h, heap_type, &freed_tmp, m);
 //          freed += freed_tmp;
@@ -1343,6 +1341,8 @@ void gc_collector_sweep()
 //    }
     // Clear allocation counts to delay next GC trigger
     ck_pr_store_int(&(m->heap_num_huge_allocations), 0); 
+    // Tracing is done, remove the trace color
+    m->gc_trace_color = m->gc_alloc_color;
 //#if GC_DEBUG_TRACE
 //    total_size = ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_SM])) +
 //                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_64])) + 
@@ -1371,27 +1371,26 @@ void gc_collector_sweep()
  * @brief Sweep portion of the GC algorithm
  * @param h           Heap to sweep
  * @param heap_type   Type of heap, based on object sizes allocated on it
- * @param sum_freed_ptr Out parameter tracking the sum of freed data, in bytes.
- *                      This parameter is ignored if NULL is passed.
- * @param thd           Thread data object for the mutator using this heap
- * @return Return the size of the largest object freed, in bytes
+ * @param thd         Thread data object for the mutator using this heap
+ * @return Pointer to the heap, or NULL if heap is to be freed
  *
  * This portion of the major GC algorithm is responsible for returning unused
- * memory slots to the heap. It is only called by the collector thread after
- * the heap has been traced to identify live objects.
+ * memory slots to the heap. It is only called by the allocator to free up space
+ * after the heap has been traced to identify live objects.
  */
-size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_data *thd)
+gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
 {
-  size_t freed, max_freed = 0, heap_freed = 0, sum_freed = 0, size;
+  size_t freed, size;
   object p, end;
   gc_free_list *q, *r, *s;
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   gc_heap *orig_heap_ptr = h;
 #endif
-  gc_heap *prev_h = NULL;
+  gc_heap *rv = h;
 
-  h->next_free = h;
+  //h->next_free = h;
   h->last_alloc_size = 0;
+  h->free_size = 0;
 
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   fprintf(stderr, "\nBefore sweep -------------------------\n");
@@ -1399,7 +1398,7 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
   gc_print_stats(orig_heap_ptr);
 #endif
 
-  for (; h; prev_h = h, h = h->next) {      // All heaps
+  //for (; h; prev_h = h, h = h->next)       // All heaps
 #if GC_DEBUG_TRACE
     fprintf(stderr, "sweep heap %p, size = %zu\n", h, (size_t) h->size);
 #endif
@@ -1412,6 +1411,7 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
 
       if ((char *)r == (char *)p) {     // this is a free block, skip it
         p = (object) (((char *)p) + r->size);
+        h->free_size += r->size;
 #if GC_DEBUG_VERBOSE
         fprintf(stderr, "skip free block %p size = %zu\n", p, r->size);
 #endif
@@ -1434,7 +1434,8 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
       }
 #endif
 
-      if (mark(p) == thd->alloc_color) { //gc_color_clear) {
+      if (mark(p) != thd->gc_alloc_color && 
+          mark(p) != thd->gc_trace_color) { //gc_color_clear) {
 #if GC_DEBUG_VERBOSE
         fprintf(stderr, "sweep is freeing unmarked obj: %p with tag %d\n", p,
                 type_of(p));
@@ -1465,7 +1466,6 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
           mp_clear(&(((bignum_type *)p)->bn));
         }
         // free p
-        heap_freed += size;
         if (((((char *)q) + q->size) == (char *)p) && (q != h->free_list)) {
           /* merge q with p */
           if (r && r->size && ((((char *)p) + size) == (char *)r)) {
@@ -1494,17 +1494,15 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
           }
           p = (object) (((char *)p) + freed);
         }
-        if (freed > max_freed)
-          max_freed = freed;
       } else {
 //#if GC_DEBUG_VERBOSE
 //        fprintf(stderr, "sweep: object is marked %p\n", p);
 //#endif
         p = (object) (((char *)p) + size);
       }
+    } else {
+      h->free_size += size;
     }
-    //h->free_size += heap_freed;
-    ck_pr_add_ptr(&(thd->cached_heap_free_sizes[heap_type]), heap_freed);
     // Free the heap page if possible.
     //
     // With huge heaps, this becomes more important. one of the huge
@@ -1519,19 +1517,20 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
     // remaining without them.
     //
     // Experimenting with only freeing huge heaps
+TODO: this all changes now, will probably need to return an indication that
+the heap needs to be freed so it can be unlinked and gc_heap_free'd by the caller
     if (gc_is_heap_empty(h) && 
           (h->type == HEAP_HUGE || !(h->ttl--))) {
-        unsigned int h_size = h->size;
-        gc_heap *new_h = gc_heap_free(h, prev_h);
-        if (new_h) { // Ensure free succeeded
-          h = new_h;
-          ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type] ), h_size);
-          ck_pr_sub_ptr(&(thd->cached_heap_total_sizes[heap_type]), h_size);
-        }
+//        unsigned int h_size = h->size;
+//        gc_heap *new_h = gc_heap_free(h, prev_h);
+//        if (new_h) { // Ensure free succeeded
+//          h = new_h;
+//          ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type] ), h_size);
+//          ck_pr_sub_ptr(&(thd->cached_heap_total_sizes[heap_type]), h_size);
+//        }
+         rv = NULL; // Let caller know heap needs to be freed
     }
-    sum_freed += heap_freed;
-    heap_freed = 0;
-  }
+  //}
 
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   fprintf(stderr, "\nAfter sweep -------------------------\n");
@@ -1539,9 +1538,7 @@ size_t gc_sweep(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_da
   gc_print_stats(orig_heap_ptr);
 #endif
 
-  if (sum_freed_ptr)
-    *sum_freed_ptr = sum_freed;
-  return max_freed;
+  return rv;
 }
 
 /**
@@ -2364,6 +2361,7 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
   thd->moveBufLen = 0;
   gc_thr_grow_move_buffer(thd);
   thd->gc_alloc_color = ck_pr_load_int(&gc_color_clear);
+  thd->gc_trace_color = thd->gc_alloc_color;
   thd->gc_status = ck_pr_load_int(&gc_status_col);
   thd->pending_writes = 0;
   thd->last_write = 0;
