@@ -1003,6 +1003,7 @@ void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t siz
 {
   gc_heap *h_start = h;
   void *result = NULL;
+TODO: rework all of this for "plan b". maybe the rework is not so bad, though??
   // TODO:
   // Find next heap
   while (result == NULL) {
