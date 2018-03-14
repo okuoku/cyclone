@@ -1348,6 +1348,8 @@ void gc_collector_sweep()
     ck_pr_store_int(&(m->heap_num_huge_allocations), 0); 
     // Tracing is done, remove the trace color
     m->gc_trace_color = m->gc_alloc_color;
+    // Let mutator know we are done tracing
+    ck_pr_cas_8(&(m->gc_done_tracing), 0, 1);
 //#if GC_DEBUG_TRACE
 //    total_size = ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_SM])) +
 //                 ck_pr_load_ptr(&(m->cached_heap_total_sizes[HEAP_64])) + 
@@ -1763,6 +1765,11 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
     }
   }
 #endif
+
+  // If we have finished tracing, clear "full" bits on the heap
+  if(ck_pr_cas_8(&(thd->gc_done_tracing), 1, 0)) {
+    TODO: go through all heaps, clear h->is_full
+  }
 
   // Initiate collection cycle if free space is too low.
   // Threshold is intentially low because we have to go through an
@@ -2363,6 +2370,7 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
   gc_thr_grow_move_buffer(thd);
   thd->gc_alloc_color = ck_pr_load_int(&gc_color_clear);
   thd->gc_trace_color = thd->gc_alloc_color;
+  thd->gc_done_tracing = 0;
   thd->gc_status = ck_pr_load_int(&gc_status_col);
   thd->pending_writes = 0;
   thd->last_write = 0;

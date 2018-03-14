@@ -297,6 +297,7 @@ struct gc_thread_data_t {
   // Data needed for heap GC
   unsigned gc_alloc_color;
   unsigned gc_trace_color;
+  uint8_t gc_done_tracing;
   int gc_status;
   int last_write;
   int last_read;
