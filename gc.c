@@ -991,15 +991,15 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
 
 void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t size, char *obj, gc_thread_data *thd)
 {
-  gc_heap *h_start = h;
+  gc_heap *h_start = h, h_prev;
   void *result = NULL;
-//TODO: rework all of this for "plan b". maybe the rework is not so bad, though??
-  // TODO:
   // Find next heap
   while (result == NULL) {
+    h_prev = h;
     h = h->next;
     if (h == NULL) {
       // Wrap around to the first heap block
+      h_prev = NULL;
       h = h_passed;
     }
     if (h == h_start) {
@@ -1010,7 +1010,15 @@ void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t siz
     if (h->is_full) {
       continue; // Cannot sweep until next GC cycle
     } else if (!gc_is_heap_empty(h)) { // TODO: empty function does not support fixed-size heaps yet
-      gc_sweep(h, heap_type, thd); // Clean up garbage objects
+      gc_heap *keep = gc_sweep(h, heap_type, thd); // Clean up garbage objects
+      if (!keep) {
+        // Heap marked for deletion, remove it and keep searching
+        gc_heap *freed = gc_heap_free(h, h_prev);
+        if (freed) {
+          h = NULL;
+          continue;
+        }
+      }
     }
     result = gc_try_alloc(h, heap_type, size, obj, thd);
     if (result) {
@@ -1514,18 +1522,9 @@ gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
     // remaining without them.
     //
     // Experimenting with only freeing huge heaps
-TODO: this all changes now, will probably need to return an indication that
-the heap needs to be freed so it can be unlinked and gc_heap_free'd by the caller
     if (gc_is_heap_empty(h) && 
-          (h->type == HEAP_HUGE || !(h->ttl--))) {
-//        unsigned int h_size = h->size;
-//        gc_heap *new_h = gc_heap_free(h, prev_h);
-//        if (new_h) { // Ensure free succeeded
-//          h = new_h;
-//          ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type] ), h_size);
-//          ck_pr_sub_ptr(&(thd->cached_heap_total_sizes[heap_type]), h_size);
-//        }
-         rv = NULL; // Let caller know heap needs to be freed
+          (h->type == HEAP_HUGE || (h->ttl--) <= 0)) {
+      rv = NULL; // Let caller know heap needs to be freed
     }
   //}
 
