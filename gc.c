@@ -957,47 +957,35 @@ int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size, gc_
 void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
                    gc_thread_data * thd)
 {
-//  gc_heap *h_passed = h;
   gc_free_list *f1, *f2, *f3;
-  // Start searching from the last heap page we had a successful
-  // allocation from, unless the current request is for a smaller
-  // block in which case there may be available memory closer to
-  // the start of the heap.
-//  if (size >= h->last_alloc_size) {
-//    h = h->next_free;
-//  }
-//  for (; h; h = h->next) {      // All heaps
 
-    for (f1 = h->free_list, f2 = f1->next; f2; f1 = f2, f2 = f2->next) {        // all free in this heap
-      if (f2->size >= size) {   // Big enough for request
-        // TODO: take whole chunk or divide up f2 (using f3)?
-        if (f2->size >= (size + gc_heap_align(1) /* min obj size */ )) {
-          f3 = (gc_free_list *) (((char *)f2) + size);
-          f3->size = f2->size - size;
-          f3->next = f2->next;
-          f1->next = f3;
-        } else {                /* Take the whole chunk */
-          f1->next = f2->next;
-        }
-
-        if (heap_type != HEAP_HUGE) {
-          // Copy object into heap now to avoid any uninitialized memory issues
-          #if GC_DEBUG_TRACE
-          if (size < (32 * NUM_ALLOC_SIZES)) {
-            allocated_size_counts[(size / 32) - 1]++;
-          }
-          #endif
-          gc_copy_obj(f2, obj, thd);
-//          ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
-        } else {
-          ck_pr_add_int(&(thd->heap_num_huge_allocations), 1);
-        }
-//        h_passed->next_free = h;
-//        h_passed->last_alloc_size = size;
-        return f2;
+  for (f1 = h->free_list, f2 = f1->next; f2; f1 = f2, f2 = f2->next) {        // all free in this heap
+    if (f2->size >= size) {   // Big enough for request
+      // TODO: take whole chunk or divide up f2 (using f3)?
+      if (f2->size >= (size + gc_heap_align(1) /* min obj size */ )) {
+        f3 = (gc_free_list *) (((char *)f2) + size);
+        f3->size = f2->size - size;
+        f3->next = f2->next;
+        f1->next = f3;
+      } else {                /* Take the whole chunk */
+        f1->next = f2->next;
       }
+
+      if (heap_type != HEAP_HUGE) {
+        // Copy object into heap now to avoid any uninitialized memory issues
+        #if GC_DEBUG_TRACE
+        if (size < (32 * NUM_ALLOC_SIZES)) {
+          allocated_size_counts[(size / 32) - 1]++;
+        }
+        #endif
+        gc_copy_obj(f2, obj, thd);
+//        ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
+      } else {
+        ck_pr_add_int(&(thd->heap_num_huge_allocations), 1); // TODO: consider if field needs to be atomic anymore
+      }
+      return f2;
     }
-//  }
+  }
   return NULL;
 }
 
@@ -1005,12 +993,13 @@ void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t siz
 {
   gc_heap *h_start = h;
   void *result = NULL;
-TODO: rework all of this for "plan b". maybe the rework is not so bad, though??
+//TODO: rework all of this for "plan b". maybe the rework is not so bad, though??
   // TODO:
   // Find next heap
   while (result == NULL) {
     h = h->next;
     if (h == NULL) {
+      // Wrap around to the first heap block
       h = h_passed;
     }
     if (h == h_start) {
@@ -1018,17 +1007,21 @@ TODO: rework all of this for "plan b". maybe the rework is not so bad, though??
       break;
     }
     // check allocation status to make sure we can use it
-    if (h->alloc_status == ALLOC_STATUS_LOCKED) {
-      continue;
-    } else if (h->alloc_status == ALLOC_STATUS_SWEEP) {
-      // TODO: sweep the heap
-      TODO: modify sweep to use h->alloc_color!!!!
-      size_t freed_tmp = 0;
-      gc_sweep(h, heap_type, &freed_tmp, thd);
+    if (h->is_full) {
+      continue; // Cannot sweep until next GC cycle
+    } else if (!gc_is_heap_empty(h)) { // TODO: empty function does not support fixed-size heaps yet
+      gc_sweep(h, heap_type, thd); // Clean up garbage objects
     }
     result = gc_try_alloc(h, heap_type, size, obj, thd);
+    if (result) {
+      h_passed->next_free = h;
+      h_passed->last_alloc_size = size;
+    } else {
+      // TODO: else, assign heap full? YES for fixed-size, for REST maybe not??
+      h->is_full = 1;
+    }
   }
-  return NULL;
+  return result;
 }
 
 /**
@@ -1162,6 +1155,10 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
 
   h = hrt->heap[heap_type];
   h_passed = h;
+  // Start searching from the last heap page we had a successful
+  // allocation from, unless the current request is for a smaller
+  // block in which case there may be available memory closer to
+  // the start of the heap.
   if (size >= h->last_alloc_size) {
     h = h->next_free;
   }
@@ -1171,14 +1168,11 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
     h_passed->next_free = h;
     h_passed->last_alloc_size = size;
   } else {
-    // Slow path
+    // Slow path, find another heap block
+    h->is_full = 1;
     result = gc_try_alloc_slow(h_passed, h, heap_type, size, obj, thd);
-    if (result) {
-      h_passed->next_free = h;
-      h_passed->last_alloc_size = size;
-    }
 
-    // Even slower path
+    // Slowest path, allocate a new heap block
     /* A vanilla mark&sweep collector would collect now, but unfortunately */
     /* we can't do that because we have to go through multiple stages, some */
     /* of which are asynchronous. So... no choice but to grow the heap. */
