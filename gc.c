@@ -47,8 +47,8 @@
 
 // Note: will need to use atomics and/or locking to access any
 // variables shared between threads
-static unsigned gc_color_mark = 1;   // Black, is swapped during GC
-static unsigned gc_color_clear = 3;  // White, is swapped during GC
+static unsigned gc_color_mark = 3;   // Black, is swapped during GC
+static unsigned gc_color_clear = 1;  // White, is swapped during GC
 // unfortunately this had to be split up; const colors are located in types.h
 
 static int gc_status_col = STATUS_SYNC1;
@@ -376,6 +376,7 @@ size_t gc_convert_heap_page_to_free_list(gc_heap *h)
     int color = mark(p);
 //    printf("found object %d color %d at %p with remaining=%lu\n", tag, color, p, remaining);
     // free space, add it to the free list
+// TODO: no good anymore, need to check for purple instead (see gc_sweep)
     if (color == gc_color_clear) {
       // Run any finalizers
       if (type_of(p) == mutex_tag) {
@@ -454,6 +455,7 @@ size_t gc_convert_heap_page_to_free_list(gc_heap *h)
  */
 void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_thread_data *thd)
 {
+// TODO: all of this needs to be reworked, see gc_sweep
   size_t heap_freed = 0, sum_freed = 0;
   short heap_is_empty;
   object p;
@@ -2183,12 +2185,17 @@ void gc_collector()
   //clear : 
   ck_pr_cas_int(&gc_stage, STAGE_RESTING, STAGE_CLEAR_OR_MARKING);
   // exchange values of markColor and clearColor
-  old_clear = ck_pr_load_int(&gc_color_clear);
-  old_mark = ck_pr_load_int(&gc_color_mark);
-  while (!ck_pr_cas_int(&gc_color_clear, old_clear, old_mark)) {
-  }
-  while (!ck_pr_cas_int(&gc_color_mark, old_mark, old_clear)) {
-  }
+//  old_clear = ck_pr_load_int(&gc_color_clear);
+//  old_mark = ck_pr_load_int(&gc_color_mark);
+//  while (!ck_pr_cas_int(&gc_color_clear, old_clear, old_mark)) {
+//  }
+//  while (!ck_pr_cas_int(&gc_color_mark, old_mark, old_clear)) {
+//  }
+  // We now increment both so that clear becomes the old mark color and a
+  // new value is used for the mark color. The old clear color becomes
+  // purple, indicating any of these objects are garbage
+  ck_pr_add_uint(&gc_color_clear, 2);
+  ck_pr_add_uint(&gc_color_mark, 2);
 #if GC_DEBUG_TRACE
   fprintf(stderr, "DEBUG - swap clear %d / mark %d\n", gc_color_clear,
           gc_color_mark);
