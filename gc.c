@@ -1766,9 +1766,17 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
   }
 #endif
 
-  // If we have finished tracing, clear "full" bits on the heap
+  // If we have finished tracing, clear any "full" bits on the heap
   if(ck_pr_cas_8(&(thd->gc_done_tracing), 1, 0)) {
-    TODO: go through all heaps, clear h->is_full
+    int heap_type;
+    gc_heap *h_tmp;
+    for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
+      h = thd->heap->heap[heap_type];
+      for (h_tmp = h; h && h_tmp; h_tmp = h->next) {
+        if (h_tmp && h_tmp->is_full == 1) {
+          h_tmp->is_full = 0;
+        }
+      }
   }
 
   // Initiate collection cycle if free space is too low.
