@@ -275,8 +275,8 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   h->next_free = h;
   h->next_frees = NULL;
   h->last_alloc_size = 0;
-  ck_pr_add_ptr(&(thd->cached_heap_total_sizes[heap_type]), size);
-  ck_pr_add_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
+  hd->cached_heap_total_sizes[heap_type] += size;
+  hd->cached_heap_free_sizes[heap_type] += size;
   h->chunk_size = chunk_size;
   h->max_size = max_size;
   h->data = (char *)gc_heap_align(sizeof(h->data) + (uintptr_t) & (h->data));
@@ -601,7 +601,7 @@ void gc_sweep_fixed_size(gc_heap * h, int heap_type, size_t * sum_freed_ptr, gc_
         if (new_h) { // Ensure free succeeded
           h = new_h;
           ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type] ), h_size);
-          ck_pr_sub_ptr(&(thd->cached_heap_total_sizes[heap_type]), h_size);
+          thd->cached_heap_total_sizes[heap_type] -= h_size;
         }
     }
     sum_freed += heap_freed;
@@ -1010,15 +1010,27 @@ void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t siz
     if (h->is_full) {
       continue; // Cannot sweep until next GC cycle
     } else if (!gc_is_heap_empty(h)) { // TODO: empty function does not support fixed-size heaps yet
+      unsigned int h_size = h->size;
+      unsigned int prev_free_size = h->free_size;
       gc_heap *keep = gc_sweep(h, heap_type, thd); // Clean up garbage objects
       if (!keep) {
         // Heap marked for deletion, remove it and keep searching
         gc_heap *freed = gc_heap_free(h, h_prev);
         if (freed) {
           h = NULL;
+          thd->cached_heap_free_sizes[heap_type] -= prev_free_size;
+          thd->cached_heap_total_sizes[heap_type] -= h_size;
           continue;
         }
       }
+      // Adjust free sizes accordingly (we skip this if page was freed above)
+      // For example:
+      //   total free = 100
+      //   this heap prev free = 50
+      //   this heap curr free = 25
+      //   this heap delta = 25 - 50 = -25
+      //   new total free = 100 + (25 - 50) = 75
+      thd->cached_heap_free_sizes[heap_type] += (h->free_size - prev_free_size);
     }
     result = gc_try_alloc(h, heap_type, size, obj, thd);
     if (result) {
@@ -1779,6 +1791,8 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
       }
   }
 
+TODO: update this for "plan b". maybe it is as simple as removing the atomics now that this is all maintained by
+one thread?
   // Initiate collection cycle if free space is too low.
   // Threshold is intentially low because we have to go through an
   // entire handshake/trace/sweep cycle, ideally without growing heap.
