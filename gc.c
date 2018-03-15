@@ -979,9 +979,10 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
         }
         #endif
         gc_copy_obj(f2, obj, thd);
-//        ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
+        // Done after sweep now instead of with each allocation
+        //ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
       } else {
-        ck_pr_add_int(&(thd->heap_num_huge_allocations), 1); // TODO: consider if field needs to be atomic anymore
+        thd->heap_num_huge_allocations++;
       }
       return f2;
     }
@@ -1356,8 +1357,6 @@ void gc_collector_sweep()
 //        }
 //      }
 //    }
-    // Clear allocation counts to delay next GC trigger
-    ck_pr_store_int(&(m->heap_num_huge_allocations), 0); 
     // Tracing is done, remove the trace color
     m->gc_trace_color = m->gc_alloc_color;
     // Let mutator know we are done tracing
@@ -1782,6 +1781,7 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
   if(ck_pr_cas_8(&(thd->gc_done_tracing), 1, 0)) {
     int heap_type;
     gc_heap *h_tmp;
+fprintf(stdout, "done tracing, cooperator is clearing full bits\n");
     for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
       h = thd->heap->heap[heap_type];
       for (h_tmp = h; h && h_tmp; h_tmp = h->next) {
@@ -1789,26 +1789,27 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
           h_tmp->is_full = 0;
         }
       }
+    }
+    // Clear allocation counts to delay next GC trigger
+    thd->heap_num_huge_allocations = 0;
   }
 
-TODO: update this for "plan b". maybe it is as simple as removing the atomics now that this is all maintained by
-one thread?
   // Initiate collection cycle if free space is too low.
   // Threshold is intentially low because we have to go through an
   // entire handshake/trace/sweep cycle, ideally without growing heap.
   if (ck_pr_load_int(&gc_stage) == STAGE_RESTING &&
-      ((ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_SM])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_SM])) * GC_COLLECTION_THRESHOLD) ||
-       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_64])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_64])) * GC_COLLECTION_THRESHOLD) ||
+      ((thd->cached_heap_free_sizes[HEAP_SM] <
+        thd->cached_heap_total_sizes[HEAP_SM] * GC_COLLECTION_THRESHOLD) ||
+       (thd->cached_heap_free_sizes[HEAP_64] <
+        thd->cached_heap_total_sizes[HEAP_64] * GC_COLLECTION_THRESHOLD) ||
 #if INTPTR_MAX == INT64_MAX
-       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_96])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_96])) * GC_COLLECTION_THRESHOLD) ||
+       (thd->cached_heap_free_sizes[HEAP_96] <
+        thd->cached_heap_total_sizes[HEAP_96] * GC_COLLECTION_THRESHOLD) ||
 #endif
-       (ck_pr_load_ptr(&(thd->cached_heap_free_sizes[HEAP_REST])) <
-        ck_pr_load_ptr(&(thd->cached_heap_total_sizes[HEAP_REST])) * GC_COLLECTION_THRESHOLD) ||
+       (thd->cached_heap_free_sizes[HEAP_REST] <
+        thd->cached_heap_total_sizes[HEAP_REST] * GC_COLLECTION_THRESHOLD) ||
        // Separate huge heap threshold since these are typically allocated as whole pages
-       (ck_pr_load_int(&(thd->heap_num_huge_allocations)) > 100)
+       (thd->heap_num_huge_allocations > 100)
         )) {
 #if GC_DEBUG_TRACE
     fprintf(stderr,
