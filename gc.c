@@ -275,8 +275,8 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   h->next_free = h;
   h->next_frees = NULL;
   h->last_alloc_size = 0;
-  hd->cached_heap_total_sizes[heap_type] += size;
-  hd->cached_heap_free_sizes[heap_type] += size;
+  thd->cached_heap_total_sizes[heap_type] += size;
+  thd->cached_heap_free_sizes[heap_type] += size;
   h->chunk_size = chunk_size;
   h->max_size = max_size;
   h->data = (char *)gc_heap_align(sizeof(h->data) + (uintptr_t) & (h->data));
@@ -992,7 +992,7 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
 
 void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t size, char *obj, gc_thread_data *thd)
 {
-  gc_heap *h_start = h, h_prev;
+  gc_heap *h_start = h, *h_prev;
   void *result = NULL;
   // Find next heap
   while (result == NULL) {
@@ -1313,32 +1313,31 @@ void gc_collector_sweep()
 {
   ck_array_iterator_t iterator;
   gc_thread_data *m;
-  gc_heap *h;
-  int heap_type;
-  size_t freed_tmp = 0, freed = 0;
-#if GC_DEBUG_TRACE
-  size_t total_size;
-  size_t total_free;
-  time_t gc_collector_start = time(NULL);
-#endif
+//  gc_heap *h;
+//  int heap_type;
+//#if GC_DEBUG_TRACE
+//  size_t total_size;
+//  size_t total_free;
+//  time_t gc_collector_start = time(NULL);
+//#endif
 
   CK_ARRAY_FOREACH(&Cyc_mutators, &iterator, &m) {
 
 // TODO: what to update in each heap? probably want to reset back to first heap in each mutator
 // may also need to set other things, clear color?
 
-    for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
-      h = m->heap->heap[heap_type];
-      if (h) {
-//        if (heap_type <= LAST_FIXED_SIZE_HEAP_TYPE) {
-//          gc_sweep_fixed_size(h, heap_type, &freed_tmp, m);
-//          freed += freed_tmp;
-//        } else {
-//          gc_sweep(h, heap_type, &freed_tmp, m);
-//          freed += freed_tmp;
-//        }
-      }
-    }
+//    for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
+//      h = m->heap->heap[heap_type];
+//      if (h) {
+////        if (heap_type <= LAST_FIXED_SIZE_HEAP_TYPE) {
+////          gc_sweep_fixed_size(h, heap_type, &freed_tmp, m);
+////          freed += freed_tmp;
+////        } else {
+////          gc_sweep(h, heap_type, &freed_tmp, m);
+////          freed += freed_tmp;
+////        }
+//      }
+//    }
 //
 //    // TODO: this loop only includes smallest 2 heaps, is that sufficient??
 //    for (heap_type = 0; heap_type < 2; heap_type++) {
@@ -1453,7 +1452,7 @@ gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
 #endif
 
       if (mark(p) != thd->gc_alloc_color && 
-          mark(p) != thd->gc_trace_color) { //gc_color_clear) {
+          mark(p) != thd->gc_trace_color) { //gc_color_clear) 
 #if GC_DEBUG_VERBOSE
         fprintf(stderr, "sweep is freeing unmarked obj: %p with tag %d\n", p,
                 type_of(p));
@@ -1517,9 +1516,8 @@ gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
 //        fprintf(stderr, "sweep: object is marked %p\n", p);
 //#endif
         p = (object) (((char *)p) + size);
+        h->free_size += size;
       }
-    } else {
-      h->free_size += size;
     }
     // Free the heap page if possible.
     //
@@ -1539,7 +1537,6 @@ gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
           (h->type == HEAP_HUGE || (h->ttl--) <= 0)) {
       rv = NULL; // Let caller know heap needs to be freed
     }
-  //}
 
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   fprintf(stderr, "\nAfter sweep -------------------------\n");
@@ -1762,7 +1759,7 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
         gc_mark_gray(thd, thd->moveBuf[i]);
       }
       pthread_mutex_unlock(&(thd->lock));
-      thd->gc_alloc_color = ck_pr_load_int(&gc_color_mark);
+      thd->gc_alloc_color = ck_pr_load_uint(&gc_color_mark);
     }
   }
 #if GC_DEBUG_VERBOSE
@@ -1783,8 +1780,8 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
     gc_heap *h_tmp;
 fprintf(stdout, "done tracing, cooperator is clearing full bits\n");
     for (heap_type = 0; heap_type < NUM_HEAP_TYPES; heap_type++) {
-      h = thd->heap->heap[heap_type];
-      for (h_tmp = h; h && h_tmp; h_tmp = h->next) {
+      h_tmp = thd->heap->heap[heap_type];
+      for (; h_tmp; h_tmp = h_tmp->next) {
         if (h_tmp && h_tmp->is_full == 1) {
           h_tmp->is_full = 0;
         }
@@ -1908,7 +1905,7 @@ void gc_mark_black(object obj)
   // TODO: is sync required to get colors? probably not on the collector
   // thread (at least) since colors are only changed once during the clear
   // phase and before the first handshake.
-  int markColor = ck_pr_load_int(&gc_color_mark);
+  int markColor = ck_pr_load_uint(&gc_color_mark);
   if (is_object_type(obj) && mark(obj) != markColor) {
     // Gray any child objects
     // Note we probably should use some form of atomics/synchronization
@@ -1963,7 +1960,7 @@ void gc_mark_black(object obj)
 // Also sync any changes to this macro with the function version
 #define gc_mark_black(obj) \
 { \
-  int markColor = ck_pr_load_int(&gc_color_mark); \
+  int markColor = ck_pr_load_uint(&gc_color_mark); \
   if (is_object_type(obj) && mark(obj) != markColor) { \
     switch (type_of(obj)) { \
     case pair_tag:{ \
@@ -2173,7 +2170,7 @@ void gc_wait_handshake()
             for (i = 0; i < buf_len; i++) {
               gc_mark_gray(m, m->moveBuf[i]);
             }
-            m->gc_alloc_color = ck_pr_load_int(&gc_color_mark);
+            m->gc_alloc_color = ck_pr_load_uint(&gc_color_mark);
           }
           pthread_mutex_unlock(&(m->lock));
         }
@@ -2199,7 +2196,7 @@ void debug_dump_globals();
  */
 void gc_collector()
 {
-  int old_clear, old_mark;
+  //int old_clear, old_mark;
 #if GC_DEBUG_TRACE
   print_allocated_obj_counts();
   print_current_time();
@@ -2391,7 +2388,7 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
   thd->gc_num_args = 0;
   thd->moveBufLen = 0;
   gc_thr_grow_move_buffer(thd);
-  thd->gc_alloc_color = ck_pr_load_int(&gc_color_clear);
+  thd->gc_alloc_color = ck_pr_load_uint(&gc_color_clear);
   thd->gc_trace_color = thd->gc_alloc_color;
   thd->gc_done_tracing = 0;
   thd->gc_status = ck_pr_load_int(&gc_status_col);
