@@ -1173,7 +1173,9 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
     heap_type = HEAP_REST;
     try_alloc = &gc_try_alloc;
   }
-
+TODO: convert fixed-size heap code and use that here. BUT, create a version of gc_alloc (maybe using macros?)
+that accepts heap type as an arg and can assume free lists. we can modify gc_move to use the proper new
+version of gc_alloc (just ifdef if need be for 32 vs 64 bit. this might speed things up a bit
   h = hrt->heap[heap_type];
   h_passed = h;
   // Start searching from the last heap page we had a successful
