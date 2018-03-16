@@ -310,6 +310,7 @@ struct gc_thread_data_t {
   uintptr_t *cached_heap_free_sizes;
   uintptr_t *cached_heap_total_sizes;
   int heap_num_huge_allocations;
+  int num_minor_gcs;
   // Data needed for call history
   char **stack_traces;
   int stack_trace_idx;
