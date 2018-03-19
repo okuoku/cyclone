@@ -1192,6 +1192,7 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
     // Slow path, find another heap block
     h->is_full = 1;
     result = gc_try_alloc_slow(h_passed, h, heap_type, size, obj, thd);
+printf("slow alloc of %p\n", result);
 
     // Slowest path, allocate a new heap block
     /* A vanilla mark&sweep collector would collect now, but unfortunately */
@@ -1204,6 +1205,7 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
 // otherwise will be a bit of a bottleneck since with lazy sweeping there is no guarantee we are at 
 // the end of the heap anymore
     result = gc_try_alloc_slow(h_passed, h, heap_type, size, obj, thd);
+printf("slowest alloc of %p\n", result);
     if (!result) {
       fprintf(stderr, "out of memory error allocating %zu bytes\n", size);
       fprintf(stderr, "Heap type %d diagnostics:\n", heap_type);
