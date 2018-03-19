@@ -1173,7 +1173,9 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
     heap_type = HEAP_REST;
     try_alloc = &gc_try_alloc;
   }
-
+//TODO: convert fixed-size heap code and use that here. BUT, create a version of gc_alloc (maybe using macros?)
+//that accepts heap type as an arg and can assume free lists. we can modify gc_move to use the proper new
+//version of gc_alloc (just ifdef if need be for 32 vs 64 bit. this might speed things up a bit
   h = hrt->heap[heap_type];
   h_passed = h;
   // Start searching from the last heap page we had a successful
@@ -1791,23 +1793,26 @@ fprintf(stdout, "done tracing, cooperator is clearing full bits\n");
     }
     // Clear allocation counts to delay next GC trigger
     thd->heap_num_huge_allocations = 0;
+    thd->num_minor_gcs = 0;
   }
 
   // Initiate collection cycle if free space is too low.
   // Threshold is intentially low because we have to go through an
   // entire handshake/trace/sweep cycle, ideally without growing heap.
   if (ck_pr_load_int(&gc_stage) == STAGE_RESTING &&
-      ((thd->cached_heap_free_sizes[HEAP_SM] <
-        thd->cached_heap_total_sizes[HEAP_SM] * GC_COLLECTION_THRESHOLD) ||
-       (thd->cached_heap_free_sizes[HEAP_64] <
-        thd->cached_heap_total_sizes[HEAP_64] * GC_COLLECTION_THRESHOLD) ||
-#if INTPTR_MAX == INT64_MAX
-       (thd->cached_heap_free_sizes[HEAP_96] <
-        thd->cached_heap_total_sizes[HEAP_96] * GC_COLLECTION_THRESHOLD) ||
-#endif
-       (thd->cached_heap_free_sizes[HEAP_REST] <
-        thd->cached_heap_total_sizes[HEAP_REST] * GC_COLLECTION_THRESHOLD) ||
+      (
+//       (thd->cached_heap_free_sizes[HEAP_SM] <
+//        thd->cached_heap_total_sizes[HEAP_SM] * GC_COLLECTION_THRESHOLD) ||
+//       (thd->cached_heap_free_sizes[HEAP_64] <
+//        thd->cached_heap_total_sizes[HEAP_64] * GC_COLLECTION_THRESHOLD) ||
+//#if INTPTR_MAX == INT64_MAX
+//       (thd->cached_heap_free_sizes[HEAP_96] <
+//        thd->cached_heap_total_sizes[HEAP_96] * GC_COLLECTION_THRESHOLD) ||
+//#endif
+//       (thd->cached_heap_free_sizes[HEAP_REST] <
+//        thd->cached_heap_total_sizes[HEAP_REST] * GC_COLLECTION_THRESHOLD) ||
        // Separate huge heap threshold since these are typically allocated as whole pages
+       (thd->num_minor_gcs++ > 100) ||
        (thd->heap_num_huge_allocations > 100)
         )) {
 #if GC_DEBUG_TRACE
@@ -2405,6 +2410,8 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
     fprintf(stderr, "Unable to initialize thread mutex\n");
     exit(1);
   }
+  thd->heap_num_huge_allocations = 0;
+  thd->num_minor_gcs = 0;
   thd->cached_heap_free_sizes = calloc(5, sizeof(uintptr_t));
   thd->cached_heap_total_sizes = calloc(5, sizeof(uintptr_t));
   thd->heap = calloc(1, sizeof(gc_heap_root));
