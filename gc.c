@@ -1018,7 +1018,11 @@ void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t siz
         // Heap marked for deletion, remove it and keep searching
         gc_heap *freed = gc_heap_free(h, h_prev);
         if (freed) {
-          h = NULL;
+          if (h_prev) {
+            h = h_prev;
+          } else {
+            h = h_passed;
+          }
           thd->cached_heap_free_sizes[heap_type] -= prev_free_size;
           thd->cached_heap_total_sizes[heap_type] -= h_size;
           continue;
