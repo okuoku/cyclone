@@ -1695,7 +1695,7 @@ void gc_mut_update(gc_thread_data * thd, object old_obj, object value)
     pthread_mutex_unlock(&(thd->lock));
   } else if (stage == STAGE_TRACING) {
 //fprintf(stderr, "DEBUG - GC async tracing marking heap obj %p ", old_obj);
-//Cyc_display(old_obj, stderr);
+//Cyc_display(thd, old_obj, stderr);
 //fprintf(stderr, "\n");
     mark_stack_or_heap_obj(thd, old_obj, 0);
 #if GC_DEBUG_VERBOSE
@@ -1703,7 +1703,7 @@ void gc_mut_update(gc_thread_data * thd, object old_obj, object value)
       fprintf(stderr,
               "added to mark buffer (trace) from write barrier %p:mark %d:",
               old_obj, mark(old_obj));
-      Cyc_display(old_obj, stderr);
+      Cyc_display(thd, old_obj, stderr);
       fprintf(stderr, "\n");
     }
 #endif
