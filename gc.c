@@ -1462,8 +1462,10 @@ gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
       if (mark(p) != thd->gc_alloc_color && 
           mark(p) != thd->gc_trace_color) { //gc_color_clear) 
 #if GC_DEBUG_VERBOSE
-        fprintf(stderr, "sweep is freeing unmarked obj: %p with tag %d\n", p,
-                type_of(p));
+        fprintf(stderr, "sweep is freeing unmarked obj: %p with tag %d mark %d - alloc color %d trace color %d\n", p,
+                type_of(p),
+                mark(p),
+                thd->gc_alloc_color, thd->gc_trace_color);
 #endif
         mark(p) = gc_color_blue;        // Needed?
         if (type_of(p) == mutex_tag) {
