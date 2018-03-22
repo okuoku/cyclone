@@ -47,8 +47,9 @@
 
 // Note: will need to use atomics and/or locking to access any
 // variables shared between threads
-static unsigned gc_color_mark = 3;   // Black, is swapped during GC
-static unsigned gc_color_clear = 1;  // White, is swapped during GC
+static unsigned gc_color_mark = 5;   // Black, is swapped during GC
+static unsigned gc_color_clear = 3;  // White, is swapped during GC
+static unsigned gc_color_purple = 1;  // There are many "shades" of purple, this is the most recent one
 // unfortunately this had to be split up; const colors are located in types.h
 
 static int gc_status_col = STATUS_SYNC1;
@@ -1225,8 +1226,9 @@ printf("slowest alloc of %p\n", result);
 #endif
 
 #if GC_DEBUG_VERBOSE
-  fprintf(stderr, "alloc %p size = %zu, obj=%p, tag=%d, mark=%d\n", result,
-          size, obj, type_of(obj), mark(((object) result)));
+  fprintf(stderr, "alloc %p size = %zu, obj=%p, tag=%d, mark=%d, thd->alloc=%d, thd->trace=%d\n", result,
+          size, obj, type_of(obj), mark(((object) result)),
+          thd->gc_alloc_color, thd->gc_trace_color);
   // Debug check, should no longer be necessary
   //if (is_value_type(result)) {
   //  printf("Invalid allocated address - is a value type %p\n", result);
@@ -1900,6 +1902,9 @@ static void gc_collector_mark_gray(object parent, object obj)
     mark_stack = vpbuffer_add(mark_stack, &mark_stack_len, mark_stack_i++, obj);
     fprintf(stderr, "mark gray parent = %p (%d) obj = %p\n", parent,
             type_of(parent), obj);
+  } else if (is_object_type(obj) && mark(obj) != gc_color_clear) {
+    fprintf(stderr, "not marking gray, parent = %p (%d) obj = %p mark(obj) = %d, gc_color_clear = %d\n", parent,
+            type_of(parent), obj, mark(obj), gc_color_clear);
   }
 }
 #else
@@ -2227,6 +2232,7 @@ void gc_collector()
   // We now increment both so that clear becomes the old mark color and a
   // new value is used for the mark color. The old clear color becomes
   // purple, indicating any of these objects are garbage
+  ck_pr_add_uint(&gc_color_purple, 2);
   ck_pr_add_uint(&gc_color_clear, 2);
   ck_pr_add_uint(&gc_color_mark, 2);
 #if GC_DEBUG_TRACE
