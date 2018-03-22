@@ -1703,7 +1703,8 @@ void gc_mut_update(gc_thread_data * thd, object old_obj, object value)
 //fprintf(stderr, "\n");
     mark_stack_or_heap_obj(thd, old_obj, 0);
 #if GC_DEBUG_VERBOSE
-    if (is_object_type(old_obj) && mark(old_obj) == gc_color_clear) {
+    if (is_object_type(old_obj) && (mark(old_obj) == gc_color_clear ||
+                                    mark(old_obj) == gc_color_purple)) {
       fprintf(stderr,
               "added to mark buffer (trace) from write barrier %p:mark %d:",
               old_obj, mark(old_obj));
@@ -1851,7 +1852,8 @@ void gc_mark_gray(gc_thread_data * thd, object obj)
   // From what I can tell, no other thread would be modifying
   // either object type or mark. Both should be stable once the object is placed
   // into the heap, with the collector being the only thread that changes marks.
-  if (is_object_type(obj) && mark(obj) == gc_color_clear) {     // TODO: sync??
+  if (is_object_type(obj) && (mark(obj) == gc_color_clear ||
+                              mark(obj) == gc_color_purple)) {     // TODO: sync??
     // Place marked object in a buffer to avoid repeated scans of the heap.
 // TODO:
 // Note that ideally this should be a lock-free data structure to make the
@@ -1877,7 +1879,8 @@ void gc_mark_gray(gc_thread_data * thd, object obj)
  */
 void gc_mark_gray2(gc_thread_data * thd, object obj)
 {
-  if (is_object_type(obj) && mark(obj) == gc_color_clear) {
+  if (is_object_type(obj) && (mark(obj) == gc_color_clear ||
+                              mark(obj) == gc_color_purple)) {
     thd->mark_buffer = vpbuffer_add(thd->mark_buffer,
                                     &(thd->mark_buffer_len),
                                     (thd->last_write + thd->pending_writes),
@@ -1898,11 +1901,12 @@ void gc_mark_gray2(gc_thread_data * thd, object obj)
 #if GC_DEBUG_VERBOSE
 static void gc_collector_mark_gray(object parent, object obj)
 {
-  if (is_object_type(obj) && mark(obj) == gc_color_clear) {
+  if (is_object_type(obj) && (mark(obj) == gc_color_clear ||
+                              mark(obj) == gc_color_purple)) {
     mark_stack = vpbuffer_add(mark_stack, &mark_stack_len, mark_stack_i++, obj);
     fprintf(stderr, "mark gray parent = %p (%d) obj = %p\n", parent,
             type_of(parent), obj);
-  } else if (is_object_type(obj) && mark(obj) != gc_color_clear) {
+  } else if (is_object_type(obj)) {
     fprintf(stderr, "not marking gray, parent = %p (%d) obj = %p mark(obj) = %d, gc_color_clear = %d\n", parent,
             type_of(parent), obj, mark(obj), gc_color_clear);
   }
@@ -1912,7 +1916,7 @@ static void gc_collector_mark_gray(object parent, object obj)
 // Attempt to speed this up by forcing an inline
 //
 #define gc_collector_mark_gray(parent, gobj) \
-  if (is_object_type(gobj) && mark(gobj) == gc_color_clear) { \
+  if (is_object_type(gobj) && (mark(gobj) == gc_color_clear || mark(gobj) == gc_color_purple)) { \
     mark_stack = vpbuffer_add(mark_stack, &mark_stack_len, mark_stack_i++, gobj); \
   }
 #endif
