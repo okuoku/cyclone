@@ -1200,24 +1200,25 @@ void *gc_alloc(gc_heap_root * hrt, size_t size, char *obj, gc_thread_data * thd,
     h->is_full = 1;
     result = gc_try_alloc_slow(h_passed, h, heap_type, size, obj, thd);
 fprintf(stderr, "slow alloc of %p\n", result);
-
-    // Slowest path, allocate a new heap block
-    /* A vanilla mark&sweep collector would collect now, but unfortunately */
-    /* we can't do that because we have to go through multiple stages, some */
-    /* of which are asynchronous. So... no choice but to grow the heap. */
-    gc_grow_heap(h, heap_type, size, 0, thd);
-    *heap_grown = 1;
-    //result = (*try_alloc)(h, heap_type, size, obj, thd);
-// TODO: would be nice if gc_grow_heap returns new page (maybe it does) then we can start from there
-// otherwise will be a bit of a bottleneck since with lazy sweeping there is no guarantee we are at 
-// the end of the heap anymore
-    result = gc_try_alloc_slow(h_passed, h, heap_type, size, obj, thd);
-fprintf(stderr, "slowest alloc of %p\n", result);
     if (!result) {
-      fprintf(stderr, "out of memory error allocating %zu bytes\n", size);
-      fprintf(stderr, "Heap type %d diagnostics:\n", heap_type);
-      gc_print_stats(h);
-      exit(1);                  /* could throw error, but OOM is a major issue, so... */
+      // Slowest path, allocate a new heap block
+      /* A vanilla mark&sweep collector would collect now, but unfortunately */
+      /* we can't do that because we have to go through multiple stages, some */
+      /* of which are asynchronous. So... no choice but to grow the heap. */
+      gc_grow_heap(h, heap_type, size, 0, thd);
+      *heap_grown = 1;
+      //result = (*try_alloc)(h, heap_type, size, obj, thd);
+  // TODO: would be nice if gc_grow_heap returns new page (maybe it does) then we can start from there
+  // otherwise will be a bit of a bottleneck since with lazy sweeping there is no guarantee we are at 
+  // the end of the heap anymore
+      result = gc_try_alloc_slow(h_passed, h, heap_type, size, obj, thd);
+  fprintf(stderr, "slowest alloc of %p\n", result);
+      if (!result) {
+        fprintf(stderr, "out of memory error allocating %zu bytes\n", size);
+        fprintf(stderr, "Heap type %d diagnostics:\n", heap_type);
+        gc_print_stats(h);
+        exit(1);                  /* could throw error, but OOM is a major issue, so... */
+      }
     }
   }
 
