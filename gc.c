@@ -982,6 +982,7 @@ void *gc_try_alloc(gc_heap * h, int heap_type, size_t size, char *obj,
         gc_copy_obj(f2, obj, thd);
         // Done after sweep now instead of with each allocation
         //ck_pr_sub_ptr(&(thd->cached_heap_free_sizes[heap_type]), size);
+        thd->cached_heap_free_sizes[heap_type] -= size;
       } else {
         thd->heap_num_huge_allocations++;
       }
@@ -1813,12 +1814,32 @@ fprintf(stdout, "done tracing, cooperator is clearing full bits\n");
       for (; h_tmp; h_tmp = h_tmp->next) {
         if (h_tmp && h_tmp->is_full == 1) {
           h_tmp->is_full = 0;
+          // Assume heap is completely free for purposes of GC free space tracking
+          thd->cached_heap_free_sizes[heap_type] += h_tmp->size - h_tmp->free_size;
+          h_tmp->free_size = h_tmp->size;
         }
       }
     }
     // Clear allocation counts to delay next GC trigger
     thd->heap_num_huge_allocations = 0;
     thd->num_minor_gcs = 0;
+
+    for (heap_type = 0; heap_type < 2; heap_type++) {
+      while ( thd->cached_heap_free_sizes[heap_type] <
+             (thd->cached_heap_total_sizes[heap_type]) * GC_FREE_THRESHOLD) {
+#if GC_DEBUG_TRACE
+        fprintf(stderr, "Less than %f%% of the heap %d is free, growing it\n",
+                100.0 * GC_FREE_THRESHOLD, heap_type);
+#endif
+        if (heap_type == HEAP_SM) {
+          gc_grow_heap(thd->heap->heap[heap_type], heap_type, 0, 0, thd);
+        } else if (heap_type == HEAP_64) {
+          gc_grow_heap(thd->heap->heap[heap_type], heap_type, 0, 0, thd);
+        } else if (heap_type == HEAP_REST) {
+          gc_grow_heap(thd->heap->heap[heap_type], heap_type, 0, 0, thd);
+        }
+      }
+    }
   }
 
   // Initiate collection cycle if free space is too low.
@@ -1826,18 +1847,18 @@ fprintf(stdout, "done tracing, cooperator is clearing full bits\n");
   // entire handshake/trace/sweep cycle, ideally without growing heap.
   if (ck_pr_load_int(&gc_stage) == STAGE_RESTING &&
       (
-//       (thd->cached_heap_free_sizes[HEAP_SM] <
-//        thd->cached_heap_total_sizes[HEAP_SM] * GC_COLLECTION_THRESHOLD) ||
-//       (thd->cached_heap_free_sizes[HEAP_64] <
-//        thd->cached_heap_total_sizes[HEAP_64] * GC_COLLECTION_THRESHOLD) ||
-//#if INTPTR_MAX == INT64_MAX
-//       (thd->cached_heap_free_sizes[HEAP_96] <
-//        thd->cached_heap_total_sizes[HEAP_96] * GC_COLLECTION_THRESHOLD) ||
-//#endif
-//       (thd->cached_heap_free_sizes[HEAP_REST] <
-//        thd->cached_heap_total_sizes[HEAP_REST] * GC_COLLECTION_THRESHOLD) ||
+       (thd->cached_heap_free_sizes[HEAP_SM] <
+        thd->cached_heap_total_sizes[HEAP_SM] * GC_COLLECTION_THRESHOLD) ||
+       (thd->cached_heap_free_sizes[HEAP_64] <
+        thd->cached_heap_total_sizes[HEAP_64] * GC_COLLECTION_THRESHOLD) ||
+#if INTPTR_MAX == INT64_MAX
+       (thd->cached_heap_free_sizes[HEAP_96] <
+        thd->cached_heap_total_sizes[HEAP_96] * GC_COLLECTION_THRESHOLD) ||
+#endif
+       (thd->cached_heap_free_sizes[HEAP_REST] <
+        thd->cached_heap_total_sizes[HEAP_REST] * GC_COLLECTION_THRESHOLD) ||
        // Separate huge heap threshold since these are typically allocated as whole pages
-       (thd->num_minor_gcs++ > 10) ||
+//       (thd->num_minor_gcs++ > 10) ||
        (thd->heap_num_huge_allocations > 100)
         )) {
 #if GC_DEBUG_TRACE
