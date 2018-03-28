@@ -910,14 +910,19 @@ int gc_grow_heap(gc_heap * h, int heap_type, size_t size, size_t chunk_size, gc_
         prev_size = h_last->size;
         if (new_size > HEAP_SIZE) {
             new_size = HEAP_SIZE;
+            break;
         }
       } else {
         new_size = HEAP_SIZE;
+        break;
       }
       h_last = h_last->next;
     }
     if (new_size == 0) {
       new_size = prev_size + h_last->size;
+      if (new_size > HEAP_SIZE) {
+        new_size = HEAP_SIZE;
+      }
     }
     // Fast-track heap page size if allocating a large block
     if (new_size < size && size < HEAP_SIZE) {
