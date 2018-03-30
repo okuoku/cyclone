@@ -1042,10 +1042,13 @@ void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t siz
       //   this heap curr free = 25
       //   this heap delta = 25 - 50 = -25
       //   new total free = 100 + (25 - 50) = 75
-      thd->cached_heap_free_sizes[heap_type] += (h->free_size - prev_free_size);
+      thd->cached_heap_free_sizes[heap_type] -= prev_free_size; // Start at a baseline
+      thd->cached_heap_free_sizes[heap_type] += h->free_size; // And incorporate what we just freed
       if (thd->cached_heap_free_sizes[heap_type] > thd->cached_heap_total_sizes[heap_type]) {
-        fprintf(stderr, "gc_try_alloc_slow - Invalid cached heap sizes, free=%zu total=%zu\n", 
-          thd->cached_heap_free_sizes[heap_type], thd->cached_heap_total_sizes[heap_type]);
+        fprintf(stderr, "gc_try_alloc_slow - Invalid cached heap sizes, free=%zu total=%zu, prev free=%zu, new free=%zu\n", 
+          thd->cached_heap_free_sizes[heap_type], thd->cached_heap_total_sizes[heap_type],
+          prev_free_size,
+          h->free_size);
       }
     }
     result = gc_try_alloc(h, heap_type, size, obj, thd);
@@ -1855,25 +1858,25 @@ fprintf(stdout, "done tracing, cooperator is clearing full bits\n");
     }
   }
 
-fprintf(stderr, "heap %d free %p total %p\n", HEAP_SM, thd->cached_heap_free_sizes[HEAP_SM], thd->cached_heap_total_sizes[HEAP_SM]);
+fprintf(stderr, "heap %d free %zu total %zu\n", HEAP_SM, thd->cached_heap_free_sizes[HEAP_SM], thd->cached_heap_total_sizes[HEAP_SM]);
       if (thd->cached_heap_free_sizes[HEAP_SM] > thd->cached_heap_total_sizes[HEAP_SM]) {
         fprintf(stderr, "gc_mut_cooperate - Invalid cached heap sizes, free=%zu total=%zu\n", 
           thd->cached_heap_free_sizes[HEAP_SM], thd->cached_heap_total_sizes[HEAP_SM]);
         exit(1);
       }
-fprintf(stderr, "heap %d free %p total %p\n", HEAP_64, thd->cached_heap_free_sizes[HEAP_64], thd->cached_heap_total_sizes[HEAP_64]);
+fprintf(stderr, "heap %d free %zu total %zu\n", HEAP_64, thd->cached_heap_free_sizes[HEAP_64], thd->cached_heap_total_sizes[HEAP_64]);
       if (thd->cached_heap_free_sizes[HEAP_64] > thd->cached_heap_total_sizes[HEAP_64]) {
         fprintf(stderr, "gc_mut_cooperate - Invalid cached heap sizes, free=%zu total=%zu\n", 
           thd->cached_heap_free_sizes[HEAP_64], thd->cached_heap_total_sizes[HEAP_64]);
         exit(1);
       }
-fprintf(stderr, "heap %d free %p total %p\n", HEAP_96, thd->cached_heap_free_sizes[HEAP_96], thd->cached_heap_total_sizes[HEAP_96]);
+fprintf(stderr, "heap %d free %zu total %zu\n", HEAP_96, thd->cached_heap_free_sizes[HEAP_96], thd->cached_heap_total_sizes[HEAP_96]);
       if (thd->cached_heap_free_sizes[HEAP_96] > thd->cached_heap_total_sizes[HEAP_96]) {
         fprintf(stderr, "gc_mut_cooperate - Invalid cached heap sizes, free=%zu total=%zu\n", 
           thd->cached_heap_free_sizes[HEAP_96], thd->cached_heap_total_sizes[HEAP_96]);
         exit(1);
       }
-fprintf(stderr, "heap %d free %p total %p\n", HEAP_REST, thd->cached_heap_free_sizes[HEAP_REST], thd->cached_heap_total_sizes[HEAP_REST]);
+fprintf(stderr, "heap %d free %zu total %zu\n", HEAP_REST, thd->cached_heap_free_sizes[HEAP_REST], thd->cached_heap_total_sizes[HEAP_REST]);
       if (thd->cached_heap_free_sizes[HEAP_REST] > thd->cached_heap_total_sizes[HEAP_REST]) {
         fprintf(stderr, "gc_mut_cooperate - Invalid cached heap sizes, free=%zu total=%zu\n", 
           thd->cached_heap_free_sizes[HEAP_REST], thd->cached_heap_total_sizes[HEAP_REST]);
