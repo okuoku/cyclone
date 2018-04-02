@@ -316,7 +316,7 @@ gc_heap *gc_heap_create(int heap_type, size_t size, size_t max_size,
   // Lazy sweeping
   h->free_size = size;
   h->is_full = 0;
-  h->cached_heap_free_sizes = 0;
+  h->cached_free_size_status = 0;
   return h;
 }
 
@@ -1021,7 +1021,6 @@ void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t siz
     } else if (!gc_is_heap_empty(h)) { // TODO: empty function does not support fixed-size heaps yet
       unsigned int h_size = h->size;
       unsigned int prev_free_size = h->free_size;
-      unsigned char cached_free_size_status = h->cached_free_size_status;
       if (h->cached_free_size_status == 1) {
         prev_free_size = h_size; // Full size was cached
       }
@@ -1050,7 +1049,7 @@ void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t siz
       thd->cached_heap_free_sizes[heap_type] -= prev_free_size; // Start at a baseline
       thd->cached_heap_free_sizes[heap_type] += h->free_size; // And incorporate what we just freed
       if (thd->cached_heap_free_sizes[heap_type] > thd->cached_heap_total_sizes[heap_type]) {
-        fprintf(stderr, "gc_try_alloc_slow - Invalid cached heap sizes, free=%zu total=%zu, prev free=%zu, new free=%zu\n", 
+        fprintf(stderr, "gc_try_alloc_slow - Invalid cached heap sizes, free=%zu total=%zu, prev free=%u, new free=%u\n", 
           thd->cached_heap_free_sizes[heap_type], thd->cached_heap_total_sizes[heap_type],
           prev_free_size,
           h->free_size);
