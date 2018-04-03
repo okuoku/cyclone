@@ -203,7 +203,7 @@ struct gc_heap_t {
   unsigned block_size;
   char *data_end;
   // Lazy-sweep related data
-  unsigned free_size; // Amount of heap data that is free
+  int free_size; // Amount of heap data that is free
   unsigned char is_full; // Determine if the heap is full
   unsigned char cached_free_size_status;
   //
