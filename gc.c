@@ -253,8 +253,11 @@ uint64_t gc_heap_free_size(gc_heap *h) {
   uint64_t free_size = 0;
   for (; h; h = h->next){
     fprintf(stderr, "Debug free size = %d\n", h->free_size);
-    free_size += (h->free_size);
-    //free_size += abs(h->free_size);
+    if (h->cached_free_size_status == 1) { // Assume all free
+      free_size += h->size;
+    } else {
+      free_size += (h->free_size);
+    }
   }
   return free_size;
 }
@@ -1451,7 +1454,8 @@ gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
 
   //h->next_free = h;
   h->last_alloc_size = 0;
-  h->free_size = 0;
+  //h->free_size = 0;
+  h->cached_free_size_status = 0;
 
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   fprintf(stderr, "\nBefore sweep -------------------------\n");
@@ -1481,7 +1485,7 @@ gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
 
       if ((char *)r == (char *)p) {     // this is a free block, skip it
         p = (object) (((char *)p) + r->size);
-        h->free_size += r->size;
+        //h->free_size += r->size;
 #if GC_DEBUG_VERBOSE
         fprintf(stderr, "skip free block %p size = %zu\n", p, r->size);
 #endif
@@ -1566,7 +1570,8 @@ gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
           }
           p = (object) (((char *)p) + freed);
         }
-        h->free_size += freed;
+        h->free_size += size;
+        fprintf(stderr, "add free block, freed = %d\n", freed);
       } else {
 //#if GC_DEBUG_VERBOSE
 //        fprintf(stderr, "sweep: object is marked %p\n", p);
@@ -1843,14 +1848,14 @@ fprintf(stdout, "done tracing, cooperator is clearing full bits\n");
       for (; h_tmp; h_tmp = h_tmp->next) {
         if (h_tmp && h_tmp->is_full == 1) {
           h_tmp->is_full = 0;
-          //h_tmp->cached_free_size_status = 1;
+          h_tmp->cached_free_size_status = 1;
           //// Assume heap is completely free for purposes of GC free space tracking
           //thd->cached_heap_free_sizes[heap_type] += h_tmp->size - h_tmp->free_size;
           //if (thd->cached_heap_free_sizes[heap_type] > thd->cached_heap_total_sizes[heap_type]) {
           //  fprintf(stderr, "gc_mut_cooperate - Invalid cached heap sizes, free=%zu total=%zu\n", 
           //    thd->cached_heap_free_sizes[heap_type], thd->cached_heap_total_sizes[heap_type]);
           //}
-          h_tmp->free_size = h_tmp->size;
+          //h_tmp->free_size = h_tmp->size;
         }
       }
     }
