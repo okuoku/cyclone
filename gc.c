@@ -252,6 +252,7 @@ void gc_free_old_thread_data()
 uint64_t gc_heap_free_size(gc_heap *h) {
   uint64_t free_size = 0;
   for (; h; h = h->next){
+    fprintf(stderr, "Debug free size = %d\n", h->free_size);
     free_size += (h->free_size);
     //free_size += abs(h->free_size);
   }
@@ -1592,6 +1593,7 @@ gc_heap *gc_sweep(gc_heap * h, int heap_type, gc_thread_data *thd)
       rv = NULL; // Let caller know heap needs to be freed
     }
 
+  fprintf(stderr, "\nAfter sweep free size = %d\n", h->free_size);
 #if GC_DEBUG_SHOW_SWEEP_DIAG
   fprintf(stderr, "\nAfter sweep -------------------------\n");
   fprintf(stderr, "Heap %d diagnostics:\n", heap_type);
