@@ -1901,7 +1901,7 @@ fprintf(stdout, "done tracing, cooperator is clearing full bits\n");
     thd->cached_heap_free_sizes[HEAP_96]   = gc_heap_free_size(thd->heap->heap[HEAP_96]) ;
     thd->cached_heap_free_sizes[HEAP_REST] = gc_heap_free_size(thd->heap->heap[HEAP_REST]);
 
-#if GC_DEBUG_TRACE
+#if GC_DEBUG_VERBOSE
     fprintf(stderr, "heap %d free %zu total %zu\n", HEAP_SM, thd->cached_heap_free_sizes[HEAP_SM], thd->cached_heap_total_sizes[HEAP_SM]);
     if (thd->cached_heap_free_sizes[HEAP_SM] > thd->cached_heap_total_sizes[HEAP_SM]) {
       fprintf(stderr, "gc_mut_cooperate - Invalid cached heap sizes, free=%zu total=%zu\n", 
