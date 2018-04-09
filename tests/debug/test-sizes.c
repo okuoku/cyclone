@@ -19,6 +19,7 @@ void print_stats(const char *type, size_t sz, size_t heap_sz)
          type, sz, heap_sz, heap_sz - sz);
 }
 void main() {
+  printf("gc_heap_align(gc_free_chunk_size) = %zu\n", gc_heap_align(gc_free_chunk_size));
   print_stats("bignum_type", sizeof(bignum_type), gc_heap_align(sizeof(bignum_type))  );
   print_stats("bytevector_type", sizeof(bytevector_type), gc_heap_align(sizeof(bytevector_type))  );
   print_stats("c_opaque_type  ", sizeof(c_opaque_type  ), gc_heap_align(sizeof(c_opaque_type  ))  );
