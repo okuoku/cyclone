@@ -1036,7 +1036,7 @@ void *gc_try_alloc_slow(gc_heap *h_passed, gc_heap *h, int heap_type, size_t siz
     // check allocation status to make sure we can use it
     if (h->is_full) {
       continue; // Cannot sweep until next GC cycle
-    } else if (!gc_is_heap_empty(h)) { // TODO: empty function does not support fixed-size heaps yet
+    } else if (h->cached_free_size_status == 1 && !gc_is_heap_empty(h)) { // TODO: empty function does not support fixed-size heaps yet
       unsigned int h_size = h->size;
       //unsigned int prev_free_size = h->free_size;
       //if (h->cached_free_size_status == 1) {
