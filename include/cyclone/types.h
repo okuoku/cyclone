@@ -112,7 +112,7 @@ typedef unsigned char tag_type;
 // Major GC tuning parameters
 
 /** Start GC cycle if % heap space free below this percentage */
-#define GC_COLLECTION_THRESHOLD 0.025 // 0.05
+#define GC_COLLECTION_THRESHOLD 0.0125 // 0.05
 
 /** After major GC, grow the heap so at least this percentage is free */
 #define GC_FREE_THRESHOLD 0.40
