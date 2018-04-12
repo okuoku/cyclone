@@ -5881,11 +5881,31 @@ void *mark_buffer_get(mark_buffer *mb, unsigned i) // TODO: macro?
   return mb->buf[i];
 }
 
-// TODO: void mark_buffer_set(mark_buffer *mb, unsigned i, void *obj)
+void mark_buffer_set(mark_buffer *mb, unsigned i, void *obj)
+{
   // Find index i
-  // If it does not exist, allocate a new buffer (double len of previous one??)
-  // buf[i] = obj
-// TODO: void mark_buffer_free(mark_buffer *mb)
+  while (i >= mb->buf_len) {
+    // Not on this page, try the next one
+    i -= mb->buf_len;
+    mb = mb->next;
+    if (mb == NULL) { 
+      // If it does not exist, allocate a new buffer
+      mb->next = mark_buffer_init(mb->buf_len * 2);
+    }
+  }
+  mb->buf[i] = obj;
+}
+
+void mark_buffer_free(mark_buffer *mb)
+{
+  mark_buffer next;
+
+  while (mb) {
+    next = mb->next;
+    free(mb->buf);
+    free(
+  }
+}
 
 void mark_buffer_test() 
 {
