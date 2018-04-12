@@ -5846,6 +5846,55 @@ void vpbuffer_free(void **buf)
   free(buf);
 }
 
+// Mark buffer functions
+// For these, we need a buffer than can grow as needed but that can also be
+// used concurrently by both a mutator thread and a collector thread.
+
+typedef struct mark_buffer_t mark_buffer;
+struct mark_buffer_t {
+  void **buf;
+  unsigned buf_len;
+  mark_buffer *next;
+};
+
+mark_buffer *mark_buffer_init(unsigned initial_size)
+{
+  mark_buffer *mb = malloc(sizeof(mark_buffer));
+  mb->buf = malloc(sizeof(void *) * initial_size);
+  mb->buf_len = initial_size;
+  mb->next = NULL;
+  return mb;
+}
+
+void *mark_buffer_get(mark_buffer *mb, unsigned i) // TODO: macro?
+{
+  while (i >= mb->buf_len) {
+    // Not on this page, try the next one
+    i -= mb->buf_len;
+    mb = mb->next;
+    if (mb == NULL) { // Safety check
+      // For now this is a fatal error, could return NULL instead
+      fprintf(stderr, "mark_buffer_get ran out of mark buffers, exiting\n");
+      exit(1);
+    }
+  }
+  return mb->buf[i];
+}
+
+// TODO: void mark_buffer_set(mark_buffer *mb, unsigned i, void *obj)
+  // Find index i
+  // If it does not exist, allocate a new buffer (double len of previous one??)
+  // buf[i] = obj
+// TODO: void mark_buffer_free(mark_buffer *mb)
+
+void mark_buffer_test() 
+{
+  // TODO: test all of this!!
+  // then externalize it to a stand-alone test program
+}
+
+// END mark buffer
+
 object Cyc_bit_unset(void *data, object n1, object n2) 
 {
   Cyc_check_int(data, n1);
