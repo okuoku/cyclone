@@ -1258,6 +1258,20 @@ void **vpbuffer_realloc(void **buf, int *len);
 void **vpbuffer_add(void **buf, int *len, int i, void *obj);
 void vpbuffer_free(void **buf);
 
+/** Mark buffers */
+typedef struct mark_buffer_t mark_buffer;
+struct mark_buffer_t {
+  void **buf;
+  unsigned buf_len;
+  mark_buffer *next;
+};
+
+mark_buffer *mark_buffer_init(unsigned initial_size);
+void *mark_buffer_get(mark_buffer *mb, unsigned i);
+void mark_buffer_set(mark_buffer *mb, unsigned i, void *obj);
+void mark_buffer_free(mark_buffer *mb);
+
+
 /* Bignum utility functions */
 double mp_get_double(mp_int *a);
 int Cyc_bignum_cmp(bn_cmp_type type, object x, int tx, object y, int ty);

@@ -5850,13 +5850,6 @@ void vpbuffer_free(void **buf)
 // For these, we need a buffer than can grow as needed but that can also be
 // used concurrently by both a mutator thread and a collector thread.
 
-typedef struct mark_buffer_t mark_buffer;
-struct mark_buffer_t {
-  void **buf;
-  unsigned buf_len;
-  mark_buffer *next;
-};
-
 mark_buffer *mark_buffer_init(unsigned initial_size)
 {
   mark_buffer *mb = malloc(sizeof(mark_buffer));
@@ -5887,30 +5880,24 @@ void mark_buffer_set(mark_buffer *mb, unsigned i, void *obj)
   while (i >= mb->buf_len) {
     // Not on this page, try the next one
     i -= mb->buf_len;
-    mb = mb->next;
-    if (mb == NULL) { 
+    if (mb->next == NULL) { 
       // If it does not exist, allocate a new buffer
       mb->next = mark_buffer_init(mb->buf_len * 2);
     }
+    mb = mb->next;
   }
   mb->buf[i] = obj;
 }
 
 void mark_buffer_free(mark_buffer *mb)
 {
-  mark_buffer next;
-
+  mark_buffer *next;
   while (mb) {
     next = mb->next;
     free(mb->buf);
-    free(
+    free(mb);
+    mb = next;
   }
-}
-
-void mark_buffer_test() 
-{
-  // TODO: test all of this!!
-  // then externalize it to a stand-alone test program
 }
 
 // END mark buffer
