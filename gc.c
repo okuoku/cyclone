@@ -1675,10 +1675,6 @@ void gc_zero_read_write_counts(gc_thread_data * thd)
   ck_pr_store_uint(&((thd->last_write)), 0);
   ck_pr_store_uint(&((thd->last_read)), 0);
   ck_pr_store_uint(&((thd->pending_writes)), 0);
-  //thd->last_write = 0;
-  //thd->last_read = 0;
-  //thd->pending_writes = 0;
-  //pthread_mutex_unlock(&(thd->lock));
 }
 
 /**
@@ -1688,16 +1684,8 @@ void gc_zero_read_write_counts(gc_thread_data * thd)
  */
 void gc_sum_pending_writes(gc_thread_data * thd, int locked)
 {
-  //if (!locked) {
-  //  pthread_mutex_lock(&(thd->lock));
-  //}
   ck_pr_add_uint(&(thd->last_write), ck_pr_load_uint(&(thd->pending_writes)));
   ck_pr_store_uint(&((thd->pending_writes)), 0);
-  //thd->last_write += thd->pending_writes;
-  //thd->pending_writes = 0;
-  //if (!locked) {
-  //  pthread_mutex_unlock(&(thd->lock));
-  //}
 }
 
 /**
@@ -1728,9 +1716,7 @@ static void mark_stack_or_heap_obj(gc_thread_data * thd, object obj, int locked)
     grayed(obj) = 1;
   } else {
     // Value is on the heap, mark gray right now
-    //if (!locked) { pthread_mutex_lock(&(thd->lock)); }
     gc_mark_gray(thd, obj);
-    //if (!locked) { pthread_mutex_unlock(&(thd->lock)); }
   }
 }
 
@@ -2001,8 +1987,6 @@ void gc_mark_gray(gc_thread_data * thd, object obj)
 // trace code) should be converted at some point.
     mark_buffer_set(thd->mark_buffer, ck_pr_load_uint(&(thd->last_write)), obj);
     ck_pr_inc_uint(&(thd->last_write));
-    //mark_buffer_set(thd->mark_buffer, thd->last_write, obj);
-    //(thd->last_write)++;        // Already locked, just do it...
   }
 }
 
@@ -2023,8 +2007,6 @@ void gc_mark_gray2(gc_thread_data * thd, object obj)
                               mark(obj) == gc_color_purple)) {
     mark_buffer_set(thd->mark_buffer, (ck_pr_load_uint(&(thd->last_write)) + ck_pr_load_uint(&(thd->pending_writes))), obj);
     ck_pr_inc_uint(&(thd->pending_writes));
-    //mark_buffer_set(thd->mark_buffer, (thd->last_write + thd->pending_writes), obj);
-    //thd->pending_writes++;
   }
 }
 
@@ -2192,7 +2174,6 @@ void gc_collector_trace()
                 ck_pr_load_uint(&(m->last_read)), ck_pr_load_uint(&(m->last_write)));
 #endif
         gc_mark_black(mark_buffer_get(m->mark_buffer, ck_pr_load_uint(&(m->last_read))));
-        //gc_mark_black(mark_buffer_get(m->mark_buffer, m->last_read));
         gc_empty_collector_stack();
         ck_pr_inc_uint(&(m->last_read));       // Inc here to prevent off-by-one error
         //(m->last_read)++;       // Inc here to prevent off-by-one error
@@ -2212,7 +2193,6 @@ void gc_collector_trace()
 #endif
           clean = 0;
         } else if (ck_pr_load_uint(&(m->pending_writes))) {
-        //} else if (m->pending_writes) {
           clean = 0;
         }
         //pthread_mutex_unlock(&(m->lock));
