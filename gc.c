@@ -1369,22 +1369,36 @@ void gc_thr_add_to_move_buffer(gc_thread_data * d, int *alloci, object obj)
  */
 void gc_zero_read_write_counts(gc_thread_data * thd)
 {
-  pthread_mutex_lock(&(thd->lock));
 #if GC_SAFETY_CHECKS
-  if (thd->last_read < thd->last_write) {
+  if (ck_pr_load_uint(&(thd->last_read)) < ck_pr_load_uint(&(thd->last_write))) {
     fprintf(stderr,
             "gc_zero_read_write_counts - last_read (%d) < last_write (%d)\n",
             thd->last_read, thd->last_write);
-  } else if (thd->pending_writes) {
+  } else if (ck_pr_load_uint(&(thd->pending_writes))) {
     fprintf(stderr,
             "gc_zero_read_write_counts - pending_writes (%d) is not zero\n",
-            thd->pending_writes);
+            ck_pr_load_uint(&(thd->pending_writes)));
   }
 #endif
-  thd->last_write = 0;
-  thd->last_read = 0;
-  thd->pending_writes = 0;
-  pthread_mutex_unlock(&(thd->lock));
+  ck_pr_store_uint(&((thd->last_write)), 0);
+  ck_pr_store_uint(&((thd->last_read)), 0);
+  ck_pr_store_uint(&((thd->pending_writes)), 0);
+//  pthread_mutex_lock(&(thd->lock));
+//#if GC_SAFETY_CHECKS
+//  if (thd->last_read < thd->last_write) {
+//    fprintf(stderr,
+//            "gc_zero_read_write_counts - last_read (%d) < last_write (%d)\n",
+//            thd->last_read, thd->last_write);
+//  } else if (thd->pending_writes) {
+//    fprintf(stderr,
+//            "gc_zero_read_write_counts - pending_writes (%d) is not zero\n",
+//            thd->pending_writes);
+//  }
+//#endif
+//  thd->last_write = 0;
+//  thd->last_read = 0;
+//  thd->pending_writes = 0;
+//  pthread_mutex_unlock(&(thd->lock));
 }
 
 /**
@@ -1394,14 +1408,16 @@ void gc_zero_read_write_counts(gc_thread_data * thd)
  */
 void gc_sum_pending_writes(gc_thread_data * thd, int locked)
 {
-  if (!locked) {
-    pthread_mutex_lock(&(thd->lock));
-  }
-  thd->last_write += thd->pending_writes;
-  thd->pending_writes = 0;
-  if (!locked) {
-    pthread_mutex_unlock(&(thd->lock));
-  }
+  ck_pr_add_uint(&(thd->last_write), ck_pr_load_uint(&(thd->pending_writes)));
+  ck_pr_store_uint(&((thd->pending_writes)), 0);
+//  if (!locked) {
+//    pthread_mutex_lock(&(thd->lock));
+//  }
+//  thd->last_write += thd->pending_writes;
+//  thd->pending_writes = 0;
+//  if (!locked) {
+//    pthread_mutex_unlock(&(thd->lock));
+//  }
 }
 
 /**
@@ -1596,10 +1612,12 @@ void gc_mark_gray(gc_thread_data * thd, object obj)
 // Note that ideally this should be a lock-free data structure to make the
 // algorithm more efficient. So this code (and the corresponding collector
 // trace code) should be converted at some point.
-    thd->mark_buffer = vpbuffer_add(thd->mark_buffer,
-                                    &(thd->mark_buffer_len),
-                                    thd->last_write, obj);
-    (thd->last_write)++;        // Already locked, just do it...
+    mark_buffer_set(thd->mark_buffer, ck_pr_load_uint(&(thd->last_write)), obj);
+    ck_pr_inc_uint(&(thd->last_write));
+    //thd->mark_buffer = vpbuffer_add(thd->mark_buffer,
+    //                                &(thd->mark_buffer_len),
+    //                                thd->last_write, obj);
+    //(thd->last_write)++;        // Already locked, just do it...
   }
 }
 
@@ -1617,11 +1635,13 @@ void gc_mark_gray(gc_thread_data * thd, object obj)
 void gc_mark_gray2(gc_thread_data * thd, object obj)
 {
   if (is_object_type(obj) && mark(obj) == gc_color_clear) {
-    thd->mark_buffer = vpbuffer_add(thd->mark_buffer,
-                                    &(thd->mark_buffer_len),
-                                    (thd->last_write + thd->pending_writes),
-                                    obj);
-    thd->pending_writes++;
+    mark_buffer_set(thd->mark_buffer, (ck_pr_load_uint(&(thd->last_write)) + ck_pr_load_uint(&(thd->pending_writes))), obj);
+    ck_pr_inc_uint(&(thd->pending_writes));
+    //thd->mark_buffer = vpbuffer_add(thd->mark_buffer,
+    //                                &(thd->mark_buffer_len),
+    //                                (thd->last_write + thd->pending_writes),
+    //                                obj);
+    //thd->pending_writes++;
   }
 }
 
@@ -1774,36 +1794,72 @@ void gc_collector_trace()
     CK_ARRAY_FOREACH(&Cyc_mutators, &iterator, &m) {
 // TODO: ideally, want to use a lock-free data structure to prevent
 // having to use a mutex here. see corresponding code in gc_mark_gray
-      pthread_mutex_lock(&(m->lock));
-      while (m->last_read < m->last_write) {
+      //pthread_mutex_lock(&(m->lock));
+      //while (m->last_read < m->last_write) {
+      while (ck_pr_load_uint(&(m->last_read)) < ck_pr_load_uint(&(m->last_write))) { // TODO: good enough?
         clean = 0;
 #if GC_DEBUG_VERBOSE
         fprintf(stderr,
                 "gc_mark_black mark buffer %p, last_read = %d last_write = %d\n",
-                (m->mark_buffer)[m->last_read], m->last_read, m->last_write);
+                mark_buffer_get(ck_pr_load_uint(&(m->mark_buffer)), ck_pr_load_uint(&(m->last_read))),
+                ck_pr_load_uint(&(m->last_read)), ck_pr_load_uint(&(m->last_write)));
 #endif
-        gc_mark_black((m->mark_buffer)[m->last_read]);
+        gc_mark_black(mark_buffer_get(m->mark_buffer, ck_pr_load_uint(&(m->last_read))));
         gc_empty_collector_stack();
-        (m->last_read)++;       // Inc here to prevent off-by-one error
+        ck_pr_inc_uint(&(m->last_read));       // Inc here to prevent off-by-one error
+        //(m->last_read)++;       // Inc here to prevent off-by-one error
       }
-      pthread_mutex_unlock(&(m->lock));
+      //pthread_mutex_unlock(&(m->lock));
 
       // Try checking the condition once more after giving the
       // mutator a chance to respond, to prevent exiting early.
       // This is experimental, not sure if it is necessary
       if (clean) {
-        pthread_mutex_lock(&(m->lock));
-        if (m->last_read < m->last_write) {
+        //pthread_mutex_lock(&(m->lock));
+        //if (m->last_read < m->last_write) {
+        if (ck_pr_load_uint(&(m->last_read)) < ck_pr_load_uint(&(m->last_write))) { // TODO: good enough?
 #if GC_SAFETY_CHECKS
           fprintf(stderr,
                   "gc_collector_trace - might have exited trace early\n");
 #endif
           clean = 0;
-        } else if (m->pending_writes) {
+        } else if (ck_pr_load_uint(&(m->pending_writes))) {
           clean = 0;
         }
-        pthread_mutex_unlock(&(m->lock));
+        //pthread_mutex_unlock(&(m->lock));
       }
+//// TODO: ideally, want to use a lock-free data structure to prevent
+//// having to use a mutex here. see corresponding code in gc_mark_gray
+//      pthread_mutex_lock(&(m->lock));
+//      while (m->last_read < m->last_write) {
+//        clean = 0;
+//#if GC_DEBUG_VERBOSE
+//        fprintf(stderr,
+//                "gc_mark_black mark buffer %p, last_read = %d last_write = %d\n",
+//                (m->mark_buffer)[m->last_read], m->last_read, m->last_write);
+//#endif
+//        gc_mark_black((m->mark_buffer)[m->last_read]);
+//        gc_empty_collector_stack();
+//        (m->last_read)++;       // Inc here to prevent off-by-one error
+//      }
+//      pthread_mutex_unlock(&(m->lock));
+//
+//      // Try checking the condition once more after giving the
+//      // mutator a chance to respond, to prevent exiting early.
+//      // This is experimental, not sure if it is necessary
+//      if (clean) {
+//        pthread_mutex_lock(&(m->lock));
+//        if (m->last_read < m->last_write) {
+//#if GC_SAFETY_CHECKS
+//          fprintf(stderr,
+//                  "gc_collector_trace - might have exited trace early\n");
+//#endif
+//          clean = 0;
+//        } else if (m->pending_writes) {
+//          clean = 0;
+//        }
+//        pthread_mutex_unlock(&(m->lock));
+//      }
     }
   }
 }
@@ -2142,10 +2198,11 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
   thd->pending_writes = 0;
   thd->last_write = 0;
   thd->last_read = 0;
-  thd->mark_buffer = NULL;
-  thd->mark_buffer_len = 128;
-  thd->mark_buffer =
-      vpbuffer_realloc(thd->mark_buffer, &(thd->mark_buffer_len));
+  thd->mark_buffer = mark_buffer_init(128);
+  //thd->mark_buffer = NULL;
+  //thd->mark_buffer_len = 128;
+  //thd->mark_buffer =
+  //    vpbuffer_realloc(thd->mark_buffer, &(thd->mark_buffer_len));
   if (pthread_mutex_init(&(thd->heap_lock), NULL) != 0) {
     fprintf(stderr, "Unable to initialize thread mutex\n");
     exit(1);
@@ -2205,8 +2262,11 @@ void gc_thread_data_free(gc_thread_data * thd)
       free(thd->gc_args);
     if (thd->moveBuf)
       free(thd->moveBuf);
-    if (thd->mark_buffer)
-      free(thd->mark_buffer);
+    if (thd->mark_buffer){
+      mark_buffer_free(thd->mark_buffer);
+    }
+    //if (thd->mark_buffer)
+    //  free(thd->mark_buffer);
     if (thd->stack_traces)
       free(thd->stack_traces);
     if (thd->mutations) {
