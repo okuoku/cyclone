@@ -1448,9 +1448,9 @@ static void mark_stack_or_heap_obj(gc_thread_data * thd, object obj, int locked)
     grayed(obj) = 1;
   } else {
     // Value is on the heap, mark gray right now
-    if (!locked) { pthread_mutex_lock(&(thd->lock)); }
+    //if (!locked) { pthread_mutex_lock(&(thd->lock)); }
     gc_mark_gray(thd, obj);
-    if (!locked) { pthread_mutex_unlock(&(thd->lock)); }
+    //if (!locked) { pthread_mutex_unlock(&(thd->lock)); }
   }
 }
 
@@ -1468,10 +1468,10 @@ void gc_mut_update(gc_thread_data * thd, object old_obj, object value)
   int //status = ck_pr_load_int(&gc_status_col),
       stage = ck_pr_load_int(&gc_stage);
   if (ck_pr_load_int(&(thd->gc_status)) != STATUS_ASYNC) {
-    pthread_mutex_lock(&(thd->lock));
+    //pthread_mutex_lock(&(thd->lock));
     mark_stack_or_heap_obj(thd, old_obj, 1);
     mark_stack_or_heap_obj(thd, value, 1);
-    pthread_mutex_unlock(&(thd->lock));
+    //pthread_mutex_unlock(&(thd->lock));
   } else if (stage == STAGE_TRACING) {
 //fprintf(stderr, "DEBUG - GC async tracing marking heap obj %p ", old_obj);
 //Cyc_display(old_obj, stderr);
@@ -1526,7 +1526,7 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
       // Mark thread "roots":
       // Begin by marking current continuation, which may have already
       // been on the heap prior to latest minor GC
-      pthread_mutex_lock(&(thd->lock));
+      //pthread_mutex_lock(&(thd->lock));
       gc_mark_gray(thd, thd->gc_cont);
       for (i = 0; i < thd->gc_num_args; i++) {
         gc_mark_gray(thd, thd->gc_args[i]);
@@ -1545,7 +1545,7 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
       for (i = 0; i < buf_len; i++) {
         gc_mark_gray(thd, thd->moveBuf[i]);
       }
-      pthread_mutex_unlock(&(thd->lock));
+      //pthread_mutex_unlock(&(thd->lock));
       thd->gc_alloc_color = ck_pr_load_int(&gc_color_mark);
     }
   }
