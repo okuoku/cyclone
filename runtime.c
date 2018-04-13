@@ -4951,13 +4951,13 @@ char *gc_fixup_moved_obj(gc_thread_data * thd, int *alloci, char *obj,
   if (grayed(obj)) {
     // Try to acquire the lock, because we are already locked if
     // the collector is cooperating on behalf of the mutator
-    if (pthread_mutex_trylock(&(thd->lock)) == 0) {
-      acquired_lock = 1;
-    }
+    //if (pthread_mutex_trylock(&(thd->lock)) == 0) {
+    //  acquired_lock = 1;
+    //}
     gc_mark_gray2(thd, hp);
-    if (acquired_lock) {
-      pthread_mutex_unlock(&(thd->lock));
-    }
+    //if (acquired_lock) {
+    //  pthread_mutex_unlock(&(thd->lock));
+    //}
   }
   // hp ==> new heap object, point to it from old stack object
   forward(obj) = hp;
