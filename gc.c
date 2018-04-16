@@ -1788,7 +1788,7 @@ void gc_collector_trace()
   ck_array_iterator_t iterator;
   gc_thread_data *m;
   int clean = 0;
-  while (!clean) {
+  while (!clean && mark_stack_i > 0) { // JAE tweak, wait for mark stack to empty as well
     clean = 1;
 
     CK_ARRAY_FOREACH(&Cyc_mutators, &iterator, &m) {
