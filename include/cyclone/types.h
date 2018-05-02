@@ -297,7 +297,6 @@ struct gc_thread_data_t {
   int gc_status;
   unsigned last_write;
   unsigned last_read;
-  unsigned pending_writes;
   mark_buffer *mark_buffer;
   pthread_mutex_t lock;
   pthread_mutex_t heap_lock;

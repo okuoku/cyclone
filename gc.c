@@ -1374,15 +1374,10 @@ void gc_zero_read_write_counts(gc_thread_data * thd)
     fprintf(stderr,
             "gc_zero_read_write_counts - last_read (%d) < last_write (%d)\n",
             thd->last_read, thd->last_write);
-  } else if (ck_pr_load_uint(&(thd->pending_writes))) {
-    fprintf(stderr,
-            "gc_zero_read_write_counts - pending_writes (%d) is not zero\n",
-            ck_pr_load_uint(&(thd->pending_writes)));
   }
 #endif
   ck_pr_store_uint(&((thd->last_write)), 0);
   ck_pr_store_uint(&((thd->last_read)), 0);
-  ck_pr_store_uint(&((thd->pending_writes)), 0);
 //  pthread_mutex_lock(&(thd->lock));
 //#if GC_SAFETY_CHECKS
 //  if (thd->last_read < thd->last_write) {
@@ -1399,25 +1394,6 @@ void gc_zero_read_write_counts(gc_thread_data * thd)
 //  thd->last_read = 0;
 //  thd->pending_writes = 0;
 //  pthread_mutex_unlock(&(thd->lock));
-}
-
-/**
- * @brief Move pending writes to 'last_write'
- * @param thd Mutator's thread data object
- * @param locked  Does the caller hold the mutator lock?
- */
-void gc_sum_pending_writes(gc_thread_data * thd, int locked)
-{
-  ck_pr_add_uint(&(thd->last_write), ck_pr_load_uint(&(thd->pending_writes)));
-  ck_pr_store_uint(&((thd->pending_writes)), 0);
-//  if (!locked) {
-//    pthread_mutex_lock(&(thd->lock));
-//  }
-//  thd->last_write += thd->pending_writes;
-//  thd->pending_writes = 0;
-//  if (!locked) {
-//    pthread_mutex_unlock(&(thd->lock));
-//  }
 }
 
 /**
@@ -1503,9 +1479,6 @@ void gc_mut_cooperate(gc_thread_data * thd, int buf_len)
 #if GC_DEBUG_VERBOSE
   int debug_print = 0;
 #endif
-
-  // Handle any pending marks from write barrier
-  gc_sum_pending_writes(thd, 0);
 
   // I think below is thread safe, but this code is tricky.
   // Worst case should be that some work is done twice if there is
@@ -1634,15 +1607,16 @@ void gc_mark_gray(gc_thread_data * thd, object obj)
  */
 void gc_mark_gray2(gc_thread_data * thd, object obj)
 {
-  if (is_object_type(obj) && mark(obj) == gc_color_clear) {
-    mark_buffer_set(thd->mark_buffer, (ck_pr_load_uint(&(thd->last_write)) + ck_pr_load_uint(&(thd->pending_writes))), obj);
-    ck_pr_inc_uint(&(thd->pending_writes));
-    //thd->mark_buffer = vpbuffer_add(thd->mark_buffer,
-    //                                &(thd->mark_buffer_len),
-    //                                (thd->last_write + thd->pending_writes),
-    //                                obj);
-    //thd->pending_writes++;
-  }
+  gc_mark_gray(thd, obj);
+//  if (is_object_type(obj) && mark(obj) == gc_color_clear) {
+//    mark_buffer_set(thd->mark_buffer, (ck_pr_load_uint(&(thd->last_write)) + ck_pr_load_uint(&(thd->pending_writes))), obj);
+//    ck_pr_inc_uint(&(thd->pending_writes));
+//    //thd->mark_buffer = vpbuffer_add(thd->mark_buffer,
+//    //                                &(thd->mark_buffer_len),
+//    //                                (thd->last_write + thd->pending_writes),
+//    //                                obj);
+//    //thd->pending_writes++;
+//  }
 }
 
 /**
@@ -1796,7 +1770,8 @@ void gc_collector_trace()
 // having to use a mutex here. see corresponding code in gc_mark_gray
       //pthread_mutex_lock(&(m->lock));
       //while (m->last_read < m->last_write) {
-      while (ck_pr_load_uint(&(m->last_read)) < ck_pr_load_uint(&(m->last_write))) { // TODO: good enough?
+      //while (ck_pr_load_uint(&(m->last_read)) < ck_pr_load_uint(&(m->last_write))) { // TODO: good enough?
+      while (!ck_pr_cas_uint(&(m->last_read), ck_pr_load_uint(&(m->last_write)), m->last_read)){
         clean = 0;
 #if GC_DEBUG_VERBOSE
         fprintf(stderr,
@@ -1811,19 +1786,21 @@ void gc_collector_trace()
       }
       //pthread_mutex_unlock(&(m->lock));
 
+      // TODO: can we set a variable or something and wait for the mutator to check it during cooperation???
+      gc_sleep_ms(2000); // Nothing more than a hack!
+
       // Try checking the condition once more after giving the
       // mutator a chance to respond, to prevent exiting early.
       // This is experimental, not sure if it is necessary
       if (clean) {
         //pthread_mutex_lock(&(m->lock));
         //if (m->last_read < m->last_write) {
-        if (ck_pr_load_uint(&(m->last_read)) < ck_pr_load_uint(&(m->last_write))) { // TODO: good enough?
+        //if (ck_pr_load_uint(&(m->last_read)) < ck_pr_load_uint(&(m->last_write))) { // TODO: good enough?
+        if (!ck_pr_cas_uint(&(m->last_read), ck_pr_load_uint(&(m->last_write)), m->last_read)){
 #if GC_SAFETY_CHECKS
           fprintf(stderr,
                   "gc_collector_trace - might have exited trace early\n");
 #endif
-          clean = 0;
-        } else if (ck_pr_load_uint(&(m->pending_writes))) {
           clean = 0;
         }
         //pthread_mutex_unlock(&(m->lock));
@@ -1960,8 +1937,6 @@ void gc_wait_handshake()
             buf_len =
                 gc_minor(m, m->stack_limit, m->stack_start, m->gc_cont, NULL,
                          0);
-            // Handle any pending marks from write barrier
-            gc_sum_pending_writes(m, 1);
             // Mark thread "roots", based on code from mutator's cooperator
             gc_mark_gray(m, m->gc_cont);
             //for (i = 0; i < m->gc_num_args; i++) {
@@ -2195,7 +2170,6 @@ void gc_thread_data_init(gc_thread_data * thd, int mut_num, char *stack_base,
   gc_thr_grow_move_buffer(thd);
   thd->gc_alloc_color = ck_pr_load_int(&gc_color_clear);
   thd->gc_status = ck_pr_load_int(&gc_status_col);
-  thd->pending_writes = 0;
   thd->last_write = 0;
   thd->last_read = 0;
   thd->mark_buffer = mark_buffer_init(128);
@@ -2373,8 +2347,6 @@ void gc_mutator_thread_runnable(gc_thread_data * thd, object result)
     // Move any remaining stack objects (should only be the result?) to heap
     gc_minor(thd, &stack_limit, thd->stack_start, thd->gc_cont, thd->gc_args,
              thd->gc_num_args);
-    // Handle any pending marks from write barrier
-    gc_sum_pending_writes(thd, 0);
 //printf("DEBUG - Call into gc_cont after collector coop\n");
     // Whoa.
     longjmp(*(thd->jmp_start), 1);
