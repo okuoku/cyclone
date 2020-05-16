@@ -6,7 +6,14 @@
 include Makefile.config
 
 # Commands
-CYCLONE = cyclone -A .
+ROOT = $(CURDIR)
+CYC_CP = "$(CC) ~src-file~ -Iinclude $(COMP_PROG_CFLAGS) -c -o ~exec-file~.o"
+CYC_CE = "$(CC) ~exec-file~.o ~obj-files~ -L. $(LIBS) $(COMP_CFLAGS) -o ~exec-file~"
+CYC_CL = "$(CC) ~src-file~ -Iinclude $(COMP_CFLAGS) -c -o ~exec-file~.o"
+CYC_CS = "$(CC) -shared -L. $(LDFLAGS) -o ~exec-file~.so ~exec-file~.o"
+CYCLONE = cyclone -no-batch -I $(ROOT) -I $(ROOT)/libs -CP $(CYC_CP) -CE $(CYC_CE) -CL $(CYC_CL) -CS $(CYC_CS)
+CYCLONE0 = $(ROOT)/cyclone0 -no-batch -I $(ROOT) -I $(ROOT)/libs -CP $(CYC_CP) -CE $(CYC_CE) -CL $(CYC_CL) -CS $(CYC_CS)
+CYCLONE_BOOT = cyclone -no-batch -I $(ROOT)
 CCOMP = $(CC) $(CFLAGS)
 INDENT_CMD = indent -linux -l80 -i2 -nut
 
@@ -157,17 +164,20 @@ hello-library/hello :
 
 libs : $(COBJECTS)
 
-$(COBJECTS) : %.o: %.sld
-	$(CYCLONE) $<
+$(COBJECTS) : %.o: %.sld cyclone0
+	$(CYCLONE0) $<
 
-cyclone : cyclone.scm $(CYC_RT_LIB) $(CYC_BN_LIB)
-	$(CYCLONE) cyclone.scm
+cyclone0 : cyclone.scm $(CYC_RT_LIB) $(CYC_BN_LIB)
+	$(CYCLONE) cyclone.scm && mv ./cyclone ./cyclone0
 
-icyc : icyc.scm $(CYC_RT_LIB) $(CYC_BN_LIB)
-	$(CYCLONE) $<
+cyclone : cyclone.scm $(CYC_RT_LIB) $(CYC_BN_LIB) cyclone0 libs
+	$(CYCLONE0) cyclone.scm
+
+icyc : icyc.scm $(CYC_RT_LIB) $(CYC_BN_LIB) libs
+	$(CYCLONE0) $<
 
 dispatch.c : generate-c.scm
-	$(CYCLONE) $<
+	$(CYCLONE_BOOT) $<
 	./generate-c
 
 $(CYC_RT_LIB) : $(CFILES) $(HEADERS) $(CYC_BN_LIB)
